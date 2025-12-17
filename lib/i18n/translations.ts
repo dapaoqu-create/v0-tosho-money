@@ -5,6 +5,18 @@ export const translations = {
     logout: "ログアウト",
     loginToSystem: "登入系統",
 
+    // Navigation
+    "nav.dashboard": "ダッシュボード",
+    "nav.bankTransactions": "銀行取引",
+    "nav.platformTransactions": "プラットフォーム取引",
+    "nav.import": "CSVインポート",
+    "nav.reconciliation": "対帳",
+    "nav.reports": "レポート",
+    "nav.statistics": "統計",
+    "nav.users": "ユーザー管理",
+    "nav.settings": "設定",
+    "nav.logout": "ログアウト",
+
     // Home page
     heroSubtitle: "不動産賃貸事業向け財務管理",
     heroTitle1: "賃貸収入を",
@@ -44,6 +56,18 @@ export const translations = {
     logout: "登出",
     loginToSystem: "登入系統",
 
+    // Navigation
+    "nav.dashboard": "儀表板",
+    "nav.bankTransactions": "銀行交易",
+    "nav.platformTransactions": "平台交易",
+    "nav.import": "CSV 匯入",
+    "nav.reconciliation": "對帳",
+    "nav.reports": "報表",
+    "nav.statistics": "統計",
+    "nav.users": "用戶管理",
+    "nav.settings": "設定",
+    "nav.logout": "登出",
+
     // Home page
     heroSubtitle: "不動產租賃事業專用財務管理",
     heroTitle1: "智慧管理",
@@ -82,6 +106,18 @@ export const translations = {
     login: "Login",
     logout: "Logout",
     loginToSystem: "Login",
+
+    // Navigation
+    "nav.dashboard": "Dashboard",
+    "nav.bankTransactions": "Bank Transactions",
+    "nav.platformTransactions": "Platform Transactions",
+    "nav.import": "CSV Import",
+    "nav.reconciliation": "Reconciliation",
+    "nav.reports": "Reports",
+    "nav.statistics": "Statistics",
+    "nav.users": "User Management",
+    "nav.settings": "Settings",
+    "nav.logout": "Logout",
 
     // Home page
     heroSubtitle: "Financial Management for Rental Properties",

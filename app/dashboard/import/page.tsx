@@ -1,0 +1,315 @@
+"use client"
+
+import type React from "react"
+
+import { useState, useCallback } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Upload, FileSpreadsheet, Check, AlertCircle } from "lucide-react"
+
+export default function ImportPage() {
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState("bank")
+  const [file, setFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [result, setResult] = useState<{ success: boolean; message: string; count?: number } | null>(null)
+
+  // Bank import fields
+  const [bankName, setBankName] = useState("")
+  const [selectedBankId, setSelectedBankId] = useState("")
+
+  // Platform import fields
+  const [platformName, setPlatformName] = useState("")
+  const [accountName, setAccountName] = useState("")
+  const [propertyName, setPropertyName] = useState("")
+  const [selectedPlatformId, setSelectedPlatformId] = useState("")
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+    if (selectedFile && selectedFile.name.endsWith(".csv")) {
+      setFile(selectedFile)
+      setResult(null)
+    }
+  }, [])
+
+  const handleBankImport = async () => {
+    if (!file) return
+
+    setIsUploading(true)
+    setResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("type", "bank")
+
+      if (bankName) {
+        formData.append("bankName", bankName)
+      } else if (selectedBankId) {
+        formData.append("bankId", selectedBankId)
+      }
+
+      const res = await fetch("/api/import", {
+        method: "POST",
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "インポートに失敗しました")
+      }
+
+      setResult({
+        success: true,
+        message: `${data.count}件のデータをインポートしました`,
+        count: data.count,
+      })
+
+      setFile(null)
+      setBankName("")
+      router.refresh()
+    } catch (error) {
+      setResult({
+        success: false,
+        message: error instanceof Error ? error.message : "エラーが発生しました",
+      })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handlePlatformImport = async () => {
+    if (!file) return
+
+    setIsUploading(true)
+    setResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("type", "platform")
+
+      if (platformName) {
+        formData.append("platformName", platformName)
+        formData.append("accountName", accountName)
+        formData.append("propertyName", propertyName)
+      } else if (selectedPlatformId) {
+        formData.append("platformId", selectedPlatformId)
+      }
+
+      const res = await fetch("/api/import", {
+        method: "POST",
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "インポートに失敗しました")
+      }
+
+      setResult({
+        success: true,
+        message: `${data.count}件のデータをインポートしました`,
+        count: data.count,
+      })
+
+      setFile(null)
+      setPlatformName("")
+      setAccountName("")
+      setPropertyName("")
+      router.refresh()
+    } catch (error) {
+      setResult({
+        success: false,
+        message: error instanceof Error ? error.message : "エラーが発生しました",
+      })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">CSVインポート</h1>
+        <p className="text-muted-foreground">銀行またはプラットフォームのCSVファイルをインポート</p>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="bank">銀行CSV</TabsTrigger>
+          <TabsTrigger value="platform">プラットフォームCSV</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="bank" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>銀行取引データのインポート</CardTitle>
+              <CardDescription>
+                楽天銀行などの出入金明細CSVをインポートします。初回インポート時は銀行名を入力してください。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="bankName">銀行名（新規の場合）</Label>
+                <Input
+                  id="bankName"
+                  value={bankName}
+                  onChange={(e) => setBankName(e.target.value)}
+                  placeholder="例：楽天銀行"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>または既存の銀行を選択</Label>
+                <Select value={selectedBankId} onValueChange={setSelectedBankId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="銀行を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="new">新規銀行を追加</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="bankFile">CSVファイル</Label>
+                <div className="flex items-center gap-4">
+                  <Input
+                    id="bankFile"
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileChange}
+                    className="cursor-pointer"
+                  />
+                </div>
+                {file && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <FileSpreadsheet className="h-4 w-4" />
+                    {file.name}
+                  </p>
+                )}
+              </div>
+
+              {result && (
+                <div
+                  className={`flex items-center gap-2 rounded-lg p-3 ${result.success ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}
+                >
+                  {result.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                  {result.message}
+                </div>
+              )}
+
+              <Button
+                onClick={handleBankImport}
+                disabled={!file || (!bankName && !selectedBankId) || isUploading}
+                className="w-full"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {isUploading ? "インポート中..." : "インポート"}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="platform" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>プラットフォーム取引データのインポート</CardTitle>
+              <CardDescription>
+                Airbnbなどの収入レポートCSVをインポートします。初回インポート時はプラットフォーム情報を入力してください。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="platformName">プラットフォーム名</Label>
+                  <Input
+                    id="platformName"
+                    value={platformName}
+                    onChange={(e) => setPlatformName(e.target.value)}
+                    placeholder="例：Airbnb"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="accountName">アカウント名</Label>
+                  <Input
+                    id="accountName"
+                    value={accountName}
+                    onChange={(e) => setAccountName(e.target.value)}
+                    placeholder="例：TOSHO"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="propertyName">房源名称</Label>
+                  <Input
+                    id="propertyName"
+                    value={propertyName}
+                    onChange={(e) => setPropertyName(e.target.value)}
+                    placeholder="例：新宿スイート"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>または既存のプラットフォームを選択</Label>
+                <Select value={selectedPlatformId} onValueChange={setSelectedPlatformId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="プラットフォームを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="new">新規プラットフォームを追加</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="platformFile">CSVファイル</Label>
+                <div className="flex items-center gap-4">
+                  <Input
+                    id="platformFile"
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileChange}
+                    className="cursor-pointer"
+                  />
+                </div>
+                {file && (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <FileSpreadsheet className="h-4 w-4" />
+                    {file.name}
+                  </p>
+                )}
+              </div>
+
+              {result && (
+                <div
+                  className={`flex items-center gap-2 rounded-lg p-3 ${result.success ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}
+                >
+                  {result.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                  {result.message}
+                </div>
+              )}
+
+              <Button
+                onClick={handlePlatformImport}
+                disabled={!file || (!platformName && !selectedPlatformId) || isUploading}
+                className="w-full"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {isUploading ? "インポート中..." : "インポート"}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}

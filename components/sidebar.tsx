@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useLanguage } from "@/lib/i18n/context"
 import {
@@ -20,6 +20,7 @@ import {
 
 export function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { t } = useLanguage()
 
   const navigation = [
@@ -33,6 +34,11 @@ export function Sidebar() {
     { name: t("nav.users"), href: "/dashboard/users", icon: Users },
     { name: t("nav.settings"), href: "/dashboard/settings", icon: Settings },
   ]
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" })
+    router.push("/login")
+  }
 
   return (
     <div className="flex h-full w-64 flex-col bg-card border-r border-border">
@@ -67,15 +73,14 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-border p-3">
-        <form action="/api/auth/logout" method="POST">
-          <button
-            type="submit"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <LogOut className="h-5 w-5" />
-            {t("nav.logout")}
-          </button>
-        </form>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <LogOut className="h-5 w-5" />
+          {t("nav.logout")}
+        </button>
       </div>
     </div>
   )

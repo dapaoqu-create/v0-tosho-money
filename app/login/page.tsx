@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { FileSpreadsheet } from "lucide-react"
+import { LanguageSelector } from "@/components/language-selector"
+import { useI18n } from "@/lib/i18n/context"
 
 export default function LoginPage() {
   const [username, setUsername] = useState("")
@@ -17,6 +19,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const { t } = useI18n()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,67 +36,73 @@ export default function LoginPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error || "ログインに失敗しました")
+        throw new Error(data.error || t("loginError"))
       }
 
       router.push("/dashboard")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "エラーが発生しました")
+      setError(err instanceof Error ? err.message : t("errorOccurred"))
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex justify-center">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-              <FileSpreadsheet className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <span className="text-2xl font-bold">TOSHO Money</span>
-          </Link>
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="flex justify-end p-4">
+        <LanguageSelector />
+      </header>
+
+      <div className="flex flex-1 items-center justify-center p-4">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 flex justify-center">
+            <Link href="/" className="flex items-center gap-2">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+                <FileSpreadsheet className="h-6 w-6 text-primary-foreground" />
+              </div>
+              <span className="text-2xl font-bold">TOSHO Money</span>
+            </Link>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("loginTitle")}</CardTitle>
+              <CardDescription>{t("loginDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="username">{t("username")}</Label>
+                  <Input
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder={t("usernamePlaceholder")}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">{t("password")}</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={t("passwordPlaceholder")}
+                    required
+                  />
+                </div>
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? t("loggingIn") : t("login")}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <p className="mt-4 text-center text-sm text-muted-foreground">{t("defaultCredentials")}</p>
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>ログイン</CardTitle>
-            <CardDescription>アカウント情報を入力してください</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">ユーザー名</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="ユーザー名を入力"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">パスワード</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="パスワードを入力"
-                  required
-                />
-              </div>
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "ログイン中..." : "ログイン"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        <p className="mt-4 text-center text-sm text-muted-foreground">デフォルト: superjimmy / good2025</p>
       </div>
     </div>
   )

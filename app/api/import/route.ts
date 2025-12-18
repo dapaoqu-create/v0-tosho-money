@@ -4,11 +4,9 @@ import { createClient } from "@/lib/supabase/server"
 function parseCSV(content: string): { headers: string[]; rows: string[][] } {
   const lines = content.split(/\r?\n/).filter((line) => line.trim())
 
-  // Find the header row (first row with column names)
   let headerIndex = 0
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    // Skip title rows (like "楽天銀行出入金明細2024.12-2025.12")
     if (line.includes(",") && !line.match(/^\d{4}\.\d{2}/)) {
       headerIndex = i
       break
@@ -17,7 +15,6 @@ function parseCSV(content: string): { headers: string[]; rows: string[][] } {
 
   const headers = lines[headerIndex].split(",").map((h) => h.trim().replace(/"/g, ""))
   const rows = lines.slice(headerIndex + 1).map((line) => {
-    // Handle CSV with quoted fields
     const result: string[] = []
     let current = ""
     let inQuotes = false
@@ -44,7 +41,6 @@ function parseCSV(content: string): { headers: string[]; rows: string[][] } {
 function parseDate(dateStr: string): string | null {
   if (!dateStr) return null
 
-  // Format: YYYYMMDD (e.g., 20241201)
   if (/^\d{8}$/.test(dateStr)) {
     const year = dateStr.slice(0, 4)
     const month = dateStr.slice(4, 6)
@@ -52,13 +48,11 @@ function parseDate(dateStr: string): string | null {
     return `${year}-${month}-${day}`
   }
 
-  // Format: MM/DD/YYYY (e.g., 12/16/2025)
   if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
     const [month, day, year] = dateStr.split("/")
     return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
   }
 
-  // Format: YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return dateStr
   }
@@ -68,10 +62,16 @@ function parseDate(dateStr: string): string | null {
 
 function parseNumber(numStr: string): number {
   if (!numStr) return 0
-  // Remove currency symbols and commas
   const cleaned = numStr.replace(/[¥,$,円,\s]/g, "").replace(/,/g, "")
   const num = Number.parseFloat(cleaned)
   return isNaN(num) ? 0 : num
+}
+
+function generateTransactionCode(bankCode: string, dateStr: string, amount: number): string {
+  const date = dateStr.replace(/-/g, "").slice(2) // YYYYMMDD -> YYMMDD
+  const amountStr = Math.abs(amount).toString()
+  const last4 = amountStr.slice(-4).padStart(4, "0")
+  return `${bankCode}${date}${last4}`
 }
 
 export async function POST(request: Request) {
@@ -91,12 +91,20 @@ export async function POST(request: Request) {
 
     if (type === "bank") {
       const bankName = formData.get("bankName") as string
-      const bankId = formData.get("bankId") as string
+      const bankCode = formData.get("bankCode") as string
+      const memo = formData.get("memo") as string
 
-      let actualBankId = bankId
+      if (!bankName || !bankCode) {
+        return NextResponse.json({ error: "銀行名と銀行識別コードは必須です" }, { status: 400 })
+      }
 
-      // Create new bank if name provided
-      if (bankName && !bankId) {
+      // Create or get bank
+      let bankId: string
+      const { data: existingBank } = await supabase.from("banks").select("id").eq("name", bankName).single()
+
+      if (existingBank) {
+        bankId = existingBank.id
+      } else {
         const { data: newBank, error: bankError } = await supabase
           .from("banks")
           .insert({ name: bankName })
@@ -106,7 +114,24 @@ export async function POST(request: Request) {
         if (bankError) {
           return NextResponse.json({ error: "銀行の作成に失敗しました" }, { status: 500 })
         }
-        actualBankId = newBank.id
+        bankId = newBank.id
+      }
+
+      const { data: batch, error: batchError } = await supabase
+        .from("csv_import_batches")
+        .insert({
+          source_type: "bank",
+          file_name: file.name,
+          bank_id: bankId,
+          bank_code: bankCode,
+          memo: memo || null,
+        })
+        .select()
+        .single()
+
+      if (batchError) {
+        console.error("Batch creation error:", batchError)
+        return NextResponse.json({ error: "インポートバッチの作成に失敗しました" }, { status: 500 })
       }
 
       // Map headers to fields (for 楽天銀行 format)
@@ -119,19 +144,27 @@ export async function POST(request: Request) {
         .filter((row) => row.length >= 3 && row[dateIndex])
         .map((row) => {
           const amount = parseNumber(row[amountIndex] || "0")
+          const transactionDate = parseDate(row[dateIndex])
+
+          const transactionCode = transactionDate ? generateTransactionCode(bankCode, transactionDate, amount) : null
+
           return {
-            bank_id: actualBankId,
-            transaction_date: parseDate(row[dateIndex]),
+            bank_id: bankId,
+            batch_id: batch.id,
+            transaction_date: transactionDate,
             amount,
             balance: parseNumber(row[balanceIndex] || "0"),
             description: row[descIndex] || "",
             is_income: amount > 0,
+            transaction_code: transactionCode,
             raw_data: Object.fromEntries(headers.map((h, i) => [h, row[i]])),
           }
         })
         .filter((t) => t.transaction_date)
 
       if (transactions.length === 0) {
+        // Delete the batch if no valid transactions
+        await supabase.from("csv_import_batches").delete().eq("id", batch.id)
         return NextResponse.json({ error: "有効なデータが見つかりませんでした" }, { status: 400 })
       }
 
@@ -139,23 +172,37 @@ export async function POST(request: Request) {
 
       if (insertError) {
         console.error("Insert error:", insertError)
+        await supabase.from("csv_import_batches").delete().eq("id", batch.id)
         return NextResponse.json({ error: "データの挿入に失敗しました" }, { status: 500 })
       }
 
-      return NextResponse.json({ success: true, count: transactions.length })
+      // Update batch record count
+      await supabase.from("csv_import_batches").update({ records_count: transactions.length }).eq("id", batch.id)
+
+      return NextResponse.json({ success: true, count: transactions.length, batchId: batch.id })
     }
 
     if (type === "platform") {
       const platformName = formData.get("platformName") as string
       const accountName = formData.get("accountName") as string
       const propertyName = formData.get("propertyName") as string
-      const platformId = formData.get("platformId") as string
 
-      let actualPlatformId = platformId
-      let actualPropertyId: string | null = null
+      if (!platformName || !accountName || !propertyName) {
+        return NextResponse.json({ error: "プラットフォーム名、アカウント名、物件名は必須です" }, { status: 400 })
+      }
 
-      // Create new platform if name provided
-      if (platformName && !platformId) {
+      // Create or get platform
+      let platformId: string
+      const { data: existingPlatform } = await supabase
+        .from("platforms")
+        .select("id")
+        .eq("name", platformName)
+        .eq("account_name", accountName)
+        .single()
+
+      if (existingPlatform) {
+        platformId = existingPlatform.id
+      } else {
         const { data: newPlatform, error: platformError } = await supabase
           .from("platforms")
           .insert({ name: platformName, account_name: accountName })
@@ -165,20 +212,49 @@ export async function POST(request: Request) {
         if (platformError) {
           return NextResponse.json({ error: "プラットフォームの作成に失敗しました" }, { status: 500 })
         }
-        actualPlatformId = newPlatform.id
+        platformId = newPlatform.id
+      }
 
-        // Create property if provided
-        if (propertyName) {
-          const { data: newProperty, error: propertyError } = await supabase
-            .from("properties")
-            .insert({ platform_id: actualPlatformId, name: propertyName })
-            .select()
-            .single()
+      // Create or get property
+      let propertyId: string | null = null
+      const { data: existingProperty } = await supabase
+        .from("properties")
+        .select("id")
+        .eq("platform_id", platformId)
+        .eq("name", propertyName)
+        .single()
 
-          if (!propertyError) {
-            actualPropertyId = newProperty.id
-          }
+      if (existingProperty) {
+        propertyId = existingProperty.id
+      } else {
+        const { data: newProperty, error: propertyError } = await supabase
+          .from("properties")
+          .insert({ platform_id: platformId, name: propertyName })
+          .select()
+          .single()
+
+        if (!propertyError) {
+          propertyId = newProperty.id
         }
+      }
+
+      const { data: batch, error: batchError } = await supabase
+        .from("csv_import_batches")
+        .insert({
+          source_type: "platform",
+          file_name: file.name,
+          platform_id: platformId,
+          property_id: propertyId,
+          platform_name: platformName,
+          account_name: accountName,
+          property_name: propertyName,
+        })
+        .select()
+        .single()
+
+      if (batchError) {
+        console.error("Batch creation error:", batchError)
+        return NextResponse.json({ error: "インポートバッチの作成に失敗しました" }, { status: 500 })
       }
 
       // Map Airbnb headers
@@ -194,8 +270,9 @@ export async function POST(request: Request) {
           const payoutAmount = parseNumber(getValue("收款"))
 
           return {
-            platform_id: actualPlatformId,
-            property_id: actualPropertyId,
+            platform_id: platformId,
+            property_id: propertyId,
+            batch_id: batch.id,
             transaction_date: parseDate(getValue("日期")),
             payout_date: parseDate(getValue("入帳日期")),
             type: getValue("類型"),
@@ -223,6 +300,7 @@ export async function POST(request: Request) {
         .filter((t) => t.transaction_date)
 
       if (transactions.length === 0) {
+        await supabase.from("csv_import_batches").delete().eq("id", batch.id)
         return NextResponse.json({ error: "有効なデータが見つかりませんでした" }, { status: 400 })
       }
 
@@ -230,10 +308,14 @@ export async function POST(request: Request) {
 
       if (insertError) {
         console.error("Insert error:", insertError)
+        await supabase.from("csv_import_batches").delete().eq("id", batch.id)
         return NextResponse.json({ error: "データの挿入に失敗しました" }, { status: 500 })
       }
 
-      return NextResponse.json({ success: true, count: transactions.length })
+      // Update batch record count
+      await supabase.from("csv_import_batches").update({ records_count: transactions.length }).eq("id", batch.id)
+
+      return NextResponse.json({ success: true, count: transactions.length, batchId: batch.id })
     }
 
     return NextResponse.json({ error: "無効なインポートタイプです" }, { status: 400 })

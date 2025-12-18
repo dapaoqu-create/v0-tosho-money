@@ -1,26 +1,20 @@
 import { createClient } from "@/lib/supabase/server"
-import { PlatformTransactionsContent } from "@/components/transactions/platform-transactions-content"
+import { PlatformBatchList } from "@/components/transactions/platform-batch-list"
 
-async function getPlatformTransactions() {
+async function getPlatformBatches() {
   const supabase = await createClient()
 
-  const { data: transactions } = await supabase
-    .from("platform_transactions")
+  const { data: batches } = await supabase
+    .from("csv_import_batches")
     .select("*, platform:platforms(*), property:properties(*)")
-    .order("transaction_date", { ascending: false })
+    .eq("source_type", "platform")
+    .order("created_at", { ascending: false })
 
-  const { data: platforms } = await supabase.from("platforms").select("*")
-  const { data: properties } = await supabase.from("properties").select("*")
-
-  return {
-    transactions: transactions || [],
-    platforms: platforms || [],
-    properties: properties || [],
-  }
+  return { batches: batches || [] }
 }
 
 export default async function PlatformTransactionsPage() {
-  const { transactions, platforms, properties } = await getPlatformTransactions()
+  const { batches } = await getPlatformBatches()
 
-  return <PlatformTransactionsContent transactions={transactions} platforms={platforms} properties={properties} />
+  return <PlatformBatchList batches={batches} />
 }

@@ -1,14 +1,12 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Upload, FileSpreadsheet, Check, AlertCircle } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
@@ -22,15 +20,13 @@ export default function ImportPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string; count?: number } | null>(null)
 
-  // Bank import fields
   const [bankName, setBankName] = useState("")
-  const [selectedBankId, setSelectedBankId] = useState("")
+  const [bankCode, setBankCode] = useState("")
+  const [bankMemo, setBankMemo] = useState("")
 
-  // Platform import fields
   const [platformName, setPlatformName] = useState("")
   const [accountName, setAccountName] = useState("")
   const [propertyName, setPropertyName] = useState("")
-  const [selectedPlatformId, setSelectedPlatformId] = useState("")
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
@@ -41,7 +37,7 @@ export default function ImportPage() {
   }, [])
 
   const handleBankImport = async () => {
-    if (!file) return
+    if (!file || !bankName || !bankCode) return
 
     setIsUploading(true)
     setResult(null)
@@ -50,12 +46,9 @@ export default function ImportPage() {
       const formData = new FormData()
       formData.append("file", file)
       formData.append("type", "bank")
-
-      if (bankName) {
-        formData.append("bankName", bankName)
-      } else if (selectedBankId) {
-        formData.append("bankId", selectedBankId)
-      }
+      formData.append("bankName", bankName)
+      formData.append("bankCode", bankCode)
+      formData.append("memo", bankMemo)
 
       const res = await fetch("/api/import", {
         method: "POST",
@@ -76,6 +69,8 @@ export default function ImportPage() {
 
       setFile(null)
       setBankName("")
+      setBankCode("")
+      setBankMemo("")
       router.refresh()
     } catch (error) {
       setResult({
@@ -88,7 +83,7 @@ export default function ImportPage() {
   }
 
   const handlePlatformImport = async () => {
-    if (!file) return
+    if (!file || !platformName || !accountName || !propertyName) return
 
     setIsUploading(true)
     setResult(null)
@@ -97,14 +92,9 @@ export default function ImportPage() {
       const formData = new FormData()
       formData.append("file", file)
       formData.append("type", "platform")
-
-      if (platformName) {
-        formData.append("platformName", platformName)
-        formData.append("accountName", accountName)
-        formData.append("propertyName", propertyName)
-      } else if (selectedPlatformId) {
-        formData.append("platformId", selectedPlatformId)
-      }
+      formData.append("platformName", platformName)
+      formData.append("accountName", accountName)
+      formData.append("propertyName", propertyName)
 
       const res = await fetch("/api/import", {
         method: "POST",
@@ -155,30 +145,39 @@ export default function ImportPage() {
               <CardDescription>{t("import.bankImportDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="bankName">{t("import.bankName")} *</Label>
+                  <Input
+                    id="bankName"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    placeholder={t("import.bankNamePlaceholder")}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bankCode">{t("import.bankCode")} *</Label>
+                  <Input
+                    id="bankCode"
+                    value={bankCode}
+                    onChange={(e) => setBankCode(e.target.value)}
+                    placeholder={t("import.bankCodePlaceholder")}
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <Label htmlFor="bankName">{t("import.bankName")}</Label>
+                <Label htmlFor="bankMemo">{t("import.memo")}</Label>
                 <Input
-                  id="bankName"
-                  value={bankName}
-                  onChange={(e) => setBankName(e.target.value)}
-                  placeholder={t("import.bankNamePlaceholder")}
+                  id="bankMemo"
+                  value={bankMemo}
+                  onChange={(e) => setBankMemo(e.target.value)}
+                  placeholder={t("import.memoPlaceholder")}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>{t("import.selectExistingBank")}</Label>
-                <Select value={selectedBankId} onValueChange={setSelectedBankId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("import.selectBank")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new">{t("import.addNewBank")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bankFile">{t("import.csvFile")}</Label>
+                <Label htmlFor="bankFile">{t("import.csvFile")} *</Label>
                 <div className="flex items-center gap-4">
                   <Input
                     id="bankFile"
@@ -198,7 +197,7 @@ export default function ImportPage() {
 
               {result && (
                 <div
-                  className={`flex items-center gap-2 rounded-lg p-3 ${result.success ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}
+                  className={`flex items-center gap-2 rounded-lg p-3 ${result.success ? "bg-green-500/10 text-green-600" : "bg-destructive/10 text-destructive"}`}
                 >
                   {result.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
                   {result.message}
@@ -207,7 +206,7 @@ export default function ImportPage() {
 
               <Button
                 onClick={handleBankImport}
-                disabled={!file || (!bankName && !selectedBankId) || isUploading}
+                disabled={!file || !bankName || !bankCode || isUploading}
                 className="w-full"
               >
                 <Upload className="mr-2 h-4 w-4" />
@@ -226,7 +225,7 @@ export default function ImportPage() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="platformName">{t("import.platformName")}</Label>
+                  <Label htmlFor="platformName">{t("import.platformName")} *</Label>
                   <Input
                     id="platformName"
                     value={platformName}
@@ -235,7 +234,7 @@ export default function ImportPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="accountName">{t("import.accountName")}</Label>
+                  <Label htmlFor="accountName">{t("import.accountName")} *</Label>
                   <Input
                     id="accountName"
                     value={accountName}
@@ -244,7 +243,7 @@ export default function ImportPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="propertyName">{t("import.propertyName")}</Label>
+                  <Label htmlFor="propertyName">{t("import.propertyName")} *</Label>
                   <Input
                     id="propertyName"
                     value={propertyName}
@@ -255,19 +254,7 @@ export default function ImportPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>{t("import.selectExistingPlatform")}</Label>
-                <Select value={selectedPlatformId} onValueChange={setSelectedPlatformId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("import.selectPlatform")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new">{t("import.addNewPlatform")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="platformFile">{t("import.csvFile")}</Label>
+                <Label htmlFor="platformFile">{t("import.csvFile")} *</Label>
                 <div className="flex items-center gap-4">
                   <Input
                     id="platformFile"
@@ -287,7 +274,7 @@ export default function ImportPage() {
 
               {result && (
                 <div
-                  className={`flex items-center gap-2 rounded-lg p-3 ${result.success ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}
+                  className={`flex items-center gap-2 rounded-lg p-3 ${result.success ? "bg-green-500/10 text-green-600" : "bg-destructive/10 text-destructive"}`}
                 >
                   {result.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
                   {result.message}
@@ -296,7 +283,7 @@ export default function ImportPage() {
 
               <Button
                 onClick={handlePlatformImport}
-                disabled={!file || (!platformName && !selectedPlatformId) || isUploading}
+                disabled={!file || !platformName || !accountName || !propertyName || isUploading}
                 className="w-full"
               >
                 <Upload className="mr-2 h-4 w-4" />

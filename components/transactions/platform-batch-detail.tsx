@@ -59,6 +59,31 @@ interface PlatformBatchDetailProps {
   transactions: PlatformTransaction[]
 }
 
+const AIRBNB_CSV_HEADERS = [
+  "日期",
+  "入帳日期",
+  "類型",
+  "確認碼",
+  "預訂日期",
+  "開始日期",
+  "結束日期",
+  "晚",
+  "客人",
+  "房源",
+  "詳情",
+  "推薦碼",
+  "幣別",
+  "金額",
+  "收款",
+  "服務費",
+  "快速收款手續費",
+  "清潔費",
+  "床單費用",
+  "總收入",
+  "住宿稅",
+  "收入年份",
+]
+
 export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetailProps) {
   const router = useRouter()
   const { t } = useLanguage()
@@ -70,7 +95,8 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
   const [isDeleting, setIsDeleting] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
 
-  const csvHeaders = transactions.length > 0 && transactions[0].raw_data ? Object.keys(transactions[0].raw_data) : []
+  const csvHeaders =
+    transactions.length > 0 && transactions[0].raw_data ? Object.keys(transactions[0].raw_data) : AIRBNB_CSV_HEADERS
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
@@ -183,7 +209,9 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
               <TableHeader>
                 <TableRow>
                   {csvHeaders.map((header) => (
-                    <TableHead key={header}>{header}</TableHead>
+                    <TableHead key={header} className="min-w-[100px]">
+                      {header}
+                    </TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
@@ -191,7 +219,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                 {transactions.map((tx) => (
                   <TableRow key={tx.id}>
                     {csvHeaders.map((header) => (
-                      <TableCell key={header}>{tx.raw_data?.[header] || "-"}</TableCell>
+                      <TableCell key={header}>{tx.raw_data?.[header] ?? "-"}</TableCell>
                     ))}
                   </TableRow>
                 ))}

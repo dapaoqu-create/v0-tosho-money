@@ -13,7 +13,7 @@ function parseCSV(content: string): { headers: string[]; rows: string[][] } {
     }
   }
 
-  const headers = lines[headerIndex].split(",").map((h) => h.trim().replace(/"/g, ""))
+  const headers = lines[headerIndex].split(",").map((h) => h.trim().replace(/^"|"$/g, ""))
   const rows = lines.slice(headerIndex + 1).map((line) => {
     const result: string[] = []
     let current = ""
@@ -68,10 +68,18 @@ function parseNumber(numStr: string): number {
 }
 
 function generateTransactionCode(bankCode: string, dateStr: string, amount: number): string {
-  const date = dateStr.replace(/-/g, "").slice(2) // YYYYMMDD -> YYMMDD
+  const date = dateStr.replace(/-/g, "").slice(2)
   const amountStr = Math.abs(amount).toString()
   const last4 = amountStr.slice(-4).padStart(4, "0")
   return `${bankCode}${date}${last4}`
+}
+
+function findHeaderIndex(headers: string[], ...keywords: string[]): number {
+  for (const keyword of keywords) {
+    const index = headers.findIndex((h) => h.includes(keyword))
+    if (index !== -1) return index
+  }
+  return -1
 }
 
 export async function POST(request: Request) {
@@ -87,6 +95,9 @@ export async function POST(request: Request) {
     const content = await file.text()
     const { headers, rows } = parseCSV(content)
 
+    console.log("[v0] Parsed CSV headers:", headers)
+    console.log("[v0] First row:", rows[0])
+
     const supabase = await createClient()
 
     if (type === "bank") {
@@ -98,7 +109,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "銀行名と銀行識別コードは必須です" }, { status: 400 })
       }
 
-      // Create or get bank
       let bankId: string
       const { data: existingBank } = await supabase.from("banks").select("id").eq("name", bankName).single()
 
@@ -134,19 +144,22 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "インポートバッチの作成に失敗しました" }, { status: 500 })
       }
 
-      // Map headers to fields (for 楽天銀行 format)
-      const dateIndex = headers.findIndex((h) => h.includes("取引日"))
-      const amountIndex = headers.findIndex((h) => h.includes("入出金"))
-      const balanceIndex = headers.findIndex((h) => h.includes("残高"))
-      const descIndex = headers.findIndex((h) => h.includes("入出金先"))
+      const dateIndex = findHeaderIndex(headers, "取引日")
+      const amountIndex = findHeaderIndex(headers, "入出金")
+      const balanceIndex = findHeaderIndex(headers, "残高")
+      const descIndex = findHeaderIndex(headers, "入出金先")
 
       const transactions = rows
         .filter((row) => row.length >= 3 && row[dateIndex])
         .map((row) => {
           const amount = parseNumber(row[amountIndex] || "0")
           const transactionDate = parseDate(row[dateIndex])
-
           const transactionCode = transactionDate ? generateTransactionCode(bankCode, transactionDate, amount) : null
+
+          const rawData: Record<string, string> = {}
+          headers.forEach((h, i) => {
+            rawData[h] = row[i] || ""
+          })
 
           return {
             bank_id: bankId,
@@ -157,13 +170,12 @@ export async function POST(request: Request) {
             description: row[descIndex] || "",
             is_income: amount > 0,
             transaction_code: transactionCode,
-            raw_data: Object.fromEntries(headers.map((h, i) => [h, row[i]])),
+            raw_data: rawData,
           }
         })
         .filter((t) => t.transaction_date)
 
       if (transactions.length === 0) {
-        // Delete the batch if no valid transactions
         await supabase.from("csv_import_batches").delete().eq("id", batch.id)
         return NextResponse.json({ error: "有効なデータが見つかりませんでした" }, { status: 400 })
       }
@@ -176,7 +188,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "データの挿入に失敗しました" }, { status: 500 })
       }
 
-      // Update batch record count
       await supabase.from("csv_import_batches").update({ records_count: transactions.length }).eq("id", batch.id)
 
       return NextResponse.json({ success: true, count: transactions.length, batchId: batch.id })
@@ -191,7 +202,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "プラットフォーム名、アカウント名、物件名は必須です" }, { status: 400 })
       }
 
-      // Create or get platform
       let platformId: string
       const { data: existingPlatform } = await supabase
         .from("platforms")
@@ -215,7 +225,6 @@ export async function POST(request: Request) {
         platformId = newPlatform.id
       }
 
-      // Create or get property
       let propertyId: string | null = null
       const { data: existingProperty } = await supabase
         .from("properties")
@@ -257,16 +266,30 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "インポートバッチの作成に失敗しました" }, { status: 500 })
       }
 
-      // Map Airbnb headers
       const headerMap: Record<string, number> = {}
       headers.forEach((h, i) => {
         headerMap[h] = i
       })
 
+      // 定義 Airbnb CSV 原始欄位名稱對應
+      const getIndex = (key: string) => headerMap[key] ?? -1
+
       const transactions = rows
-        .filter((row) => row.length >= 3 && row[headerMap["日期"]])
+        .filter((row) => {
+          const dateIdx = getIndex("日期")
+          return row.length >= 3 && dateIdx !== -1 && row[dateIdx]
+        })
         .map((row) => {
-          const getValue = (key: string) => row[headerMap[key]] || ""
+          const getValue = (key: string) => {
+            const idx = getIndex(key)
+            return idx !== -1 ? row[idx] || "" : ""
+          }
+
+          const rawData: Record<string, string> = {}
+          headers.forEach((h, i) => {
+            rawData[h] = row[i] || ""
+          })
+
           const payoutAmount = parseNumber(getValue("收款"))
 
           return {
@@ -294,10 +317,15 @@ export async function POST(request: Request) {
             revenue_year: Number.parseInt(getValue("收入年份")) || new Date().getFullYear(),
             details: getValue("詳情"),
             referral_code: getValue("推薦碼"),
-            raw_data: Object.fromEntries(headers.map((h, i) => [h, row[i]])),
+            raw_data: rawData,
           }
         })
         .filter((t) => t.transaction_date)
+
+      console.log("[v0] Platform transactions count:", transactions.length)
+      if (transactions.length > 0) {
+        console.log("[v0] First transaction raw_data:", transactions[0].raw_data)
+      }
 
       if (transactions.length === 0) {
         await supabase.from("csv_import_batches").delete().eq("id", batch.id)
@@ -312,7 +340,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "データの挿入に失敗しました" }, { status: 500 })
       }
 
-      // Update batch record count
       await supabase.from("csv_import_batches").update({ records_count: transactions.length }).eq("id", batch.id)
 
       return NextResponse.json({ success: true, count: transactions.length, batchId: batch.id })

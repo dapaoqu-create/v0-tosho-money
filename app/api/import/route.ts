@@ -257,6 +257,7 @@ export async function POST(request: Request) {
           platform_name: platformName,
           account_name: accountName,
           property_name: propertyName,
+          csv_headers: JSON.stringify(headers),
         })
         .select()
         .single()
@@ -271,7 +272,6 @@ export async function POST(request: Request) {
         headerMap[h] = i
       })
 
-      // 定義 Airbnb CSV 原始欄位名稱對應
       const getIndex = (key: string) => headerMap[key] ?? -1
 
       const transactions = rows
@@ -285,7 +285,9 @@ export async function POST(request: Request) {
             return idx !== -1 ? row[idx] || "" : ""
           }
 
-          const rawData: Record<string, string> = {}
+          const rawData: Record<string, string> = {
+            _headers: JSON.stringify(headers),
+          }
           headers.forEach((h, i) => {
             rawData[h] = row[i] || ""
           })

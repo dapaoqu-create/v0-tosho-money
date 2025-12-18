@@ -52,6 +52,7 @@ interface PlatformBatch {
   property_name: string
   records_count: number
   created_at: string
+  csv_headers?: string[]
 }
 
 interface PlatformBatchDetailProps {
@@ -95,8 +96,29 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
   const [isDeleting, setIsDeleting] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
 
-  const csvHeaders =
-    transactions.length > 0 && transactions[0].raw_data ? Object.keys(transactions[0].raw_data) : AIRBNB_CSV_HEADERS
+  const getHeaders = (): string[] => {
+    // 嘗試從第一筆交易的 raw_data 獲取 _headers
+    if (transactions.length > 0 && transactions[0].raw_data?._headers) {
+      try {
+        const parsed = JSON.parse(transactions[0].raw_data._headers)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed
+        }
+      } catch (e) {
+        // 解析失敗，繼續嘗試其他方式
+      }
+    }
+
+    // 嘗試使用 batch.csv_headers
+    if (batch.csv_headers && Array.isArray(batch.csv_headers) && batch.csv_headers.length > 0) {
+      return batch.csv_headers
+    }
+
+    // 使用預設的 Airbnb 欄位順序
+    return AIRBNB_CSV_HEADERS
+  }
+
+  const csvHeaders = getHeaders()
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]

@@ -257,7 +257,7 @@ export async function POST(request: Request) {
           platform_name: platformName,
           account_name: accountName,
           property_name: propertyName,
-          csv_headers: JSON.stringify(headers),
+          csv_headers: headers,
         })
         .select()
         .single()

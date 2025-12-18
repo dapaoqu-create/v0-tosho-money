@@ -106,6 +106,7 @@ export const translations = {
     "bank.mergeModeDesc": "日付と金額が同じデータはスキップし、新しいデータのみ追加します。",
     "bank.replaceMode": "置換",
     "bank.replaceModeDesc": "既存のデータをすべて削除し、新しいデータで置き換えます。",
+    "bank.records": "件",
 
     // Platform Transactions
     "platform.title": "プラットフォーム取引",
@@ -141,6 +142,7 @@ export const translations = {
     "platform.mergeModeDesc": "確認コードが同じデータはスキップし、新しいデータのみ追加します。",
     "platform.replaceMode": "置換",
     "platform.replaceModeDesc": "既存のデータをすべて削除し、新しいデータで置き換えます。",
+    "platform.records": "件",
 
     // CSV Import
     "import.title": "CSVインポート",
@@ -345,6 +347,7 @@ export const translations = {
     "bank.mergeModeDesc": "日期和金額相同的資料跳過，只新增沒有的資料。",
     "bank.replaceMode": "取代",
     "bank.replaceModeDesc": "完全刪除舊資料，更新為新資料。",
+    "bank.records": "筆",
 
     // Platform Transactions
     "platform.title": "平台交易",
@@ -380,6 +383,7 @@ export const translations = {
     "platform.mergeModeDesc": "確認碼相同的資料跳過，只新增沒有的資料。",
     "platform.replaceMode": "取代",
     "platform.replaceModeDesc": "完全刪除舊資料，更新為新資料。",
+    "platform.records": "筆",
 
     // CSV Import
     "import.title": "CSV 匯入",
@@ -583,6 +587,7 @@ export const translations = {
     "bank.mergeModeDesc": "Skip records with same date and amount, only add new records.",
     "bank.replaceMode": "Replace",
     "bank.replaceModeDesc": "Delete all existing data and replace with new data.",
+    "bank.records": "records",
 
     // Platform Transactions
     "platform.title": "Platform Transactions",
@@ -619,6 +624,7 @@ export const translations = {
     "platform.mergeModeDesc": "Skip records with same confirmation code, only add new records.",
     "platform.replaceMode": "Replace",
     "platform.replaceModeDesc": "Delete all existing data and replace with new data.",
+    "platform.records": "records",
 
     // CSV Import
     "import.title": "CSV Import",

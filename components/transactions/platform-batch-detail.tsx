@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,6 +41,7 @@ interface PlatformTransaction {
   nights: number
   payout_amount: number
   reconciled: boolean
+  raw_data: Record<string, string> | null
 }
 
 interface PlatformBatch {
@@ -68,6 +69,8 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
   const [isUploading, setIsUploading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  const csvHeaders = transactions.length > 0 && transactions[0].raw_data ? Object.keys(transactions[0].raw_data) : []
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
@@ -140,17 +143,6 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
     }
   }
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("ja-JP")
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("ja-JP", {
-      style: "currency",
-      currency: "JPY",
-    }).format(amount)
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -169,6 +161,8 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
               </CardTitle>
               <CardDescription>
                 {t("platform.accountName")}: {batch.account_name} • {batch.file_name}
+                {" • "}
+                {transactions.length} {t("platform.records")}
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -184,36 +178,27 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("platform.date")}</TableHead>
-                <TableHead>{t("platform.type")}</TableHead>
-                <TableHead>{t("platform.confirmationCode")}</TableHead>
-                <TableHead>{t("platform.guest")}</TableHead>
-                <TableHead className="text-right">{t("platform.nights")}</TableHead>
-                <TableHead className="text-right">{t("platform.payout")}</TableHead>
-                <TableHead>{t("platform.status")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.map((tx) => (
-                <TableRow key={tx.id}>
-                  <TableCell>{formatDate(tx.transaction_date)}</TableCell>
-                  <TableCell>{tx.type}</TableCell>
-                  <TableCell className="font-mono text-xs">{tx.confirmation_code}</TableCell>
-                  <TableCell>{tx.guest_name}</TableCell>
-                  <TableCell className="text-right">{tx.nights}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(tx.payout_amount)}</TableCell>
-                  <TableCell>
-                    <Badge variant={tx.reconciled ? "default" : "secondary"}>
-                      {tx.reconciled ? t("platform.reconciled") : t("platform.pending")}
-                    </Badge>
-                  </TableCell>
+          <ScrollArea className="w-full whitespace-nowrap rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {csvHeaders.map((header) => (
+                    <TableHead key={header}>{header}</TableHead>
+                  ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {transactions.map((tx) => (
+                  <TableRow key={tx.id}>
+                    {csvHeaders.map((header) => (
+                      <TableCell key={header}>{tx.raw_data?.[header] || "-"}</TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
         </CardContent>
       </Card>
 

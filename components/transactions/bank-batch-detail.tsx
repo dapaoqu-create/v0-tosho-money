@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +40,7 @@ interface BankTransaction {
   description: string
   is_income: boolean
   transaction_code: string | null
+  raw_data: Record<string, string> | null
 }
 
 interface BankBatch {
@@ -69,6 +71,8 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  const csvHeaders = transactions.length > 0 && transactions[0].raw_data ? Object.keys(transactions[0].raw_data) : []
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
@@ -141,17 +145,6 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     }
   }
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("ja-JP")
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("ja-JP", {
-      style: "currency",
-      currency: "JPY",
-    }).format(amount)
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -169,6 +162,8 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
               <CardDescription>
                 {batch.file_name} • {t("bank.bankCode")}: {batch.bank_code}
                 {batch.memo && ` • ${t("bank.memo")}: ${batch.memo}`}
+                {" • "}
+                {transactions.length} {t("bank.records")}
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -184,31 +179,31 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("bank.transactionCode")}</TableHead>
-                <TableHead>{t("bank.date")}</TableHead>
-                <TableHead>{t("bank.description")}</TableHead>
-                <TableHead className="text-right">{t("bank.amount")}</TableHead>
-                <TableHead className="text-right">{t("bank.balance")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.map((tx) => (
-                <TableRow key={tx.id}>
-                  <TableCell className="font-mono text-xs">{tx.transaction_code || "-"}</TableCell>
-                  <TableCell>{formatDate(tx.transaction_date)}</TableCell>
-                  <TableCell>{tx.description}</TableCell>
-                  <TableCell className={`text-right ${tx.is_income ? "text-green-600" : "text-red-600"}`}>
-                    {tx.is_income ? "+" : ""}
-                    {formatCurrency(tx.amount)}
-                  </TableCell>
-                  <TableCell className="text-right">{formatCurrency(tx.balance)}</TableCell>
+          <ScrollArea className="w-full whitespace-nowrap rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="sticky left-0 bg-background z-10">{t("bank.transactionCode")}</TableHead>
+                  {csvHeaders.map((header) => (
+                    <TableHead key={header}>{header}</TableHead>
+                  ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {transactions.map((tx) => (
+                  <TableRow key={tx.id}>
+                    <TableCell className="sticky left-0 bg-background z-10 font-mono text-xs">
+                      {tx.transaction_code || "-"}
+                    </TableCell>
+                    {csvHeaders.map((header) => (
+                      <TableCell key={header}>{tx.raw_data?.[header] || "-"}</TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
         </CardContent>
       </Card>
 

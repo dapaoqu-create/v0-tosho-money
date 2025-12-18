@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { SettingsView } from "@/components/settings/settings-view"
+import { SettingsContent } from "@/components/settings/settings-content"
 
 async function getSettings() {
   const supabase = await createClient()
@@ -18,14 +18,5 @@ async function getSettings() {
 export default async function SettingsPage() {
   const { banks, platforms, properties } = await getSettings()
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">設定</h1>
-        <p className="text-muted-foreground">銀行・プラットフォーム・物件の管理</p>
-      </div>
-
-      <SettingsView banks={banks} platforms={platforms} properties={properties} />
-    </div>
-  )
+  return <SettingsContent banks={banks} platforms={platforms} properties={properties} />
 }

@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TrendingUp, TrendingDown, Wallet, Clock, Calendar, DollarSign } from "lucide-react"
+import { useLanguage } from "@/lib/i18n/context"
 import type { DashboardStats } from "@/lib/types"
 
 interface StatsCardsProps {
@@ -9,6 +10,8 @@ interface StatsCardsProps {
 }
 
 export function StatsCards({ stats }: StatsCardsProps) {
+  const { t } = useLanguage()
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("ja-JP", {
       style: "currency",
@@ -19,42 +22,42 @@ export function StatsCards({ stats }: StatsCardsProps) {
 
   const cards = [
     {
-      title: "総収入",
+      titleKey: "dashboard.totalRevenue",
       value: formatCurrency(stats.totalRevenue),
       icon: TrendingUp,
       iconColor: "text-success",
       bgColor: "bg-success/10",
     },
     {
-      title: "総支出",
+      titleKey: "dashboard.totalExpenses",
       value: formatCurrency(stats.totalExpenses),
       icon: TrendingDown,
       iconColor: "text-destructive",
       bgColor: "bg-destructive/10",
     },
     {
-      title: "純利益",
+      titleKey: "dashboard.netIncome",
       value: formatCurrency(stats.netIncome),
       icon: Wallet,
       iconColor: stats.netIncome >= 0 ? "text-success" : "text-destructive",
       bgColor: stats.netIncome >= 0 ? "bg-success/10" : "bg-destructive/10",
     },
     {
-      title: "未対帳件数",
+      titleKey: "dashboard.pendingReconciliation",
       value: stats.pendingReconciliation.toString(),
       icon: Clock,
       iconColor: "text-warning",
       bgColor: "bg-warning/10",
     },
     {
-      title: "予約件数",
+      titleKey: "dashboard.totalBookings",
       value: stats.totalBookings.toString(),
       icon: Calendar,
       iconColor: "text-primary",
       bgColor: "bg-primary/10",
     },
     {
-      title: "平均単価/泊",
+      titleKey: "dashboard.averageNightlyRate",
       value: formatCurrency(stats.averageNightlyRate),
       icon: DollarSign,
       iconColor: "text-primary",
@@ -65,9 +68,9 @@ export function StatsCards({ stats }: StatsCardsProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       {cards.map((card) => (
-        <Card key={card.title}>
+        <Card key={card.titleKey}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{card.title}</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t(card.titleKey as any)}</CardTitle>
             <div className={`rounded-full p-2 ${card.bgColor}`}>
               <card.icon className={`h-4 w-4 ${card.iconColor}`} />
             </div>

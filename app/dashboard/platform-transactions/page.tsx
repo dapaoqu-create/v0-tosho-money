@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { PlatformTransactionsTable } from "@/components/transactions/platform-transactions-table"
+import { PlatformTransactionsContent } from "@/components/transactions/platform-transactions-content"
 
 async function getPlatformTransactions() {
   const supabase = await createClient()
@@ -22,14 +22,5 @@ async function getPlatformTransactions() {
 export default async function PlatformTransactionsPage() {
   const { transactions, platforms, properties } = await getPlatformTransactions()
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">プラットフォーム取引</h1>
-        <p className="text-muted-foreground">Airbnb等のプラットフォーム収入データを管理</p>
-      </div>
-
-      <PlatformTransactionsTable transactions={transactions} platforms={platforms} properties={properties} />
-    </div>
-  )
+  return <PlatformTransactionsContent transactions={transactions} platforms={platforms} properties={properties} />
 }

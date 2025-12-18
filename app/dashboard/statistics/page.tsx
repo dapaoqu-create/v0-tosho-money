@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { StatisticsView } from "@/components/statistics/statistics-view"
+import { StatisticsContent } from "@/components/statistics/statistics-content"
 
 async function getStatisticsData() {
   const supabase = await createClient()
@@ -27,17 +27,10 @@ export default async function StatisticsPage() {
   const { platformTransactions, bankTransactions, properties } = await getStatisticsData()
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">統計</h1>
-        <p className="text-muted-foreground">収入・支出の詳細分析</p>
-      </div>
-
-      <StatisticsView
-        platformTransactions={platformTransactions}
-        bankTransactions={bankTransactions}
-        properties={properties}
-      />
-    </div>
+    <StatisticsContent
+      platformTransactions={platformTransactions}
+      bankTransactions={bankTransactions}
+      properties={properties}
+    />
   )
 }

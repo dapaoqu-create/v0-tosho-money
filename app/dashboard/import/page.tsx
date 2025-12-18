@@ -11,9 +11,12 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Upload, FileSpreadsheet, Check, AlertCircle } from "lucide-react"
+import { DashboardHeader } from "@/components/dashboard-header"
+import { useLanguage } from "@/lib/i18n/context"
 
 export default function ImportPage() {
   const router = useRouter()
+  const { t } = useLanguage()
   const [activeTab, setActiveTab] = useState("bank")
   const [file, setFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -62,12 +65,12 @@ export default function ImportPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error || "インポートに失敗しました")
+        throw new Error(data.error || t("import.importError"))
       }
 
       setResult({
         success: true,
-        message: `${data.count}件のデータをインポートしました`,
+        message: `${data.count}${t("import.importSuccess")}`,
         count: data.count,
       })
 
@@ -77,7 +80,7 @@ export default function ImportPage() {
     } catch (error) {
       setResult({
         success: false,
-        message: error instanceof Error ? error.message : "エラーが発生しました",
+        message: error instanceof Error ? error.message : t("errorOccurred"),
       })
     } finally {
       setIsUploading(false)
@@ -111,12 +114,12 @@ export default function ImportPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error || "インポートに失敗しました")
+        throw new Error(data.error || t("import.importError"))
       }
 
       setResult({
         success: true,
-        message: `${data.count}件のデータをインポートしました`,
+        message: `${data.count}${t("import.importSuccess")}`,
         count: data.count,
       })
 
@@ -128,7 +131,7 @@ export default function ImportPage() {
     } catch (error) {
       setResult({
         success: false,
-        message: error instanceof Error ? error.message : "エラーが発生しました",
+        message: error instanceof Error ? error.message : t("errorOccurred"),
       })
     } finally {
       setIsUploading(false)
@@ -137,50 +140,45 @@ export default function ImportPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">CSVインポート</h1>
-        <p className="text-muted-foreground">銀行またはプラットフォームのCSVファイルをインポート</p>
-      </div>
+      <DashboardHeader titleKey="import.title" subtitleKey="import.subtitle" />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="bank">銀行CSV</TabsTrigger>
-          <TabsTrigger value="platform">プラットフォームCSV</TabsTrigger>
+          <TabsTrigger value="bank">{t("import.bankTab")}</TabsTrigger>
+          <TabsTrigger value="platform">{t("import.platformTab")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="bank" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>銀行取引データのインポート</CardTitle>
-              <CardDescription>
-                楽天銀行などの出入金明細CSVをインポートします。初回インポート時は銀行名を入力してください。
-              </CardDescription>
+              <CardTitle>{t("import.bankImportTitle")}</CardTitle>
+              <CardDescription>{t("import.bankImportDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="bankName">銀行名（新規の場合）</Label>
+                <Label htmlFor="bankName">{t("import.bankName")}</Label>
                 <Input
                   id="bankName"
                   value={bankName}
                   onChange={(e) => setBankName(e.target.value)}
-                  placeholder="例：楽天銀行"
+                  placeholder={t("import.bankNamePlaceholder")}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>または既存の銀行を選択</Label>
+                <Label>{t("import.selectExistingBank")}</Label>
                 <Select value={selectedBankId} onValueChange={setSelectedBankId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="銀行を選択" />
+                    <SelectValue placeholder={t("import.selectBank")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="new">新規銀行を追加</SelectItem>
+                    <SelectItem value="new">{t("import.addNewBank")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="bankFile">CSVファイル</Label>
+                <Label htmlFor="bankFile">{t("import.csvFile")}</Label>
                 <div className="flex items-center gap-4">
                   <Input
                     id="bankFile"
@@ -213,7 +211,7 @@ export default function ImportPage() {
                 className="w-full"
               >
                 <Upload className="mr-2 h-4 w-4" />
-                {isUploading ? "インポート中..." : "インポート"}
+                {isUploading ? t("import.importing") : t("import.importButton")}
               </Button>
             </CardContent>
           </Card>
@@ -222,56 +220,54 @@ export default function ImportPage() {
         <TabsContent value="platform" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>プラットフォーム取引データのインポート</CardTitle>
-              <CardDescription>
-                Airbnbなどの収入レポートCSVをインポートします。初回インポート時はプラットフォーム情報を入力してください。
-              </CardDescription>
+              <CardTitle>{t("import.platformImportTitle")}</CardTitle>
+              <CardDescription>{t("import.platformImportDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="platformName">プラットフォーム名</Label>
+                  <Label htmlFor="platformName">{t("import.platformName")}</Label>
                   <Input
                     id="platformName"
                     value={platformName}
                     onChange={(e) => setPlatformName(e.target.value)}
-                    placeholder="例：Airbnb"
+                    placeholder={t("import.platformNamePlaceholder")}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="accountName">アカウント名</Label>
+                  <Label htmlFor="accountName">{t("import.accountName")}</Label>
                   <Input
                     id="accountName"
                     value={accountName}
                     onChange={(e) => setAccountName(e.target.value)}
-                    placeholder="例：TOSHO"
+                    placeholder={t("import.accountNamePlaceholder")}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="propertyName">房源名称</Label>
+                  <Label htmlFor="propertyName">{t("import.propertyName")}</Label>
                   <Input
                     id="propertyName"
                     value={propertyName}
                     onChange={(e) => setPropertyName(e.target.value)}
-                    placeholder="例：新宿スイート"
+                    placeholder={t("import.propertyNamePlaceholder")}
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>または既存のプラットフォームを選択</Label>
+                <Label>{t("import.selectExistingPlatform")}</Label>
                 <Select value={selectedPlatformId} onValueChange={setSelectedPlatformId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="プラットフォームを選択" />
+                    <SelectValue placeholder={t("import.selectPlatform")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="new">新規プラットフォームを追加</SelectItem>
+                    <SelectItem value="new">{t("import.addNewPlatform")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="platformFile">CSVファイル</Label>
+                <Label htmlFor="platformFile">{t("import.csvFile")}</Label>
                 <div className="flex items-center gap-4">
                   <Input
                     id="platformFile"
@@ -304,7 +300,7 @@ export default function ImportPage() {
                 className="w-full"
               >
                 <Upload className="mr-2 h-4 w-4" />
-                {isUploading ? "インポート中..." : "インポート"}
+                {isUploading ? t("import.importing") : t("import.importButton")}
               </Button>
             </CardContent>
           </Card>

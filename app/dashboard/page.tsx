@@ -1,8 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { StatsCards } from "@/components/dashboard/stats-cards"
-import { RevenueChart } from "@/components/dashboard/revenue-chart"
-import { DailyChart } from "@/components/dashboard/daily-chart"
-import { RecentTransactions } from "@/components/dashboard/recent-transactions"
+import { DashboardContent } from "@/components/dashboard/dashboard-content"
 import type { DashboardStats, MonthlyData, DailyData } from "@/lib/types"
 
 async function getDashboardData() {
@@ -113,20 +110,12 @@ export default async function DashboardPage() {
   const { stats, monthlyData, dailyData, bankTransactions, platformTransactions } = await getDashboardData()
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">ダッシュボード</h1>
-        <p className="text-muted-foreground">財務状況の概要</p>
-      </div>
-
-      <StatsCards stats={stats} />
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <RevenueChart data={monthlyData} title="月次収支推移" />
-        <DailyChart data={dailyData} title="日次収入（直近30日）" />
-      </div>
-
-      <RecentTransactions bankTransactions={bankTransactions} platformTransactions={platformTransactions} />
-    </div>
+    <DashboardContent
+      stats={stats}
+      monthlyData={monthlyData}
+      dailyData={dailyData}
+      bankTransactions={bankTransactions}
+      platformTransactions={platformTransactions}
+    />
   )
 }

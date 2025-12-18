@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { BankTransactionsTable } from "@/components/transactions/bank-transactions-table"
+import { BankTransactionsContent } from "@/components/transactions/bank-transactions-content"
 
 async function getBankTransactions() {
   const supabase = await createClient()
@@ -17,14 +17,5 @@ async function getBankTransactions() {
 export default async function BankTransactionsPage() {
   const { transactions, banks } = await getBankTransactions()
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">銀行取引</h1>
-        <p className="text-muted-foreground">銀行の出入金データを管理</p>
-      </div>
-
-      <BankTransactionsTable transactions={transactions} banks={banks} />
-    </div>
-  )
+  return <BankTransactionsContent transactions={transactions} banks={banks} />
 }

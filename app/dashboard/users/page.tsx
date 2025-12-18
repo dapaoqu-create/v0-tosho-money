@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { UsersManagement } from "@/components/users/users-management"
+import { UsersContent } from "@/components/users/users-content"
 
 async function getUsers() {
   const supabase = await createClient()
@@ -11,14 +11,5 @@ async function getUsers() {
 export default async function UsersPage() {
   const users = await getUsers()
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">ユーザー管理</h1>
-        <p className="text-muted-foreground">システムユーザーの管理</p>
-      </div>
-
-      <UsersManagement users={users} />
-    </div>
-  )
+  return <UsersContent users={users} />
 }

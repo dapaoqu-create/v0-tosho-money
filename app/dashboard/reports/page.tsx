@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { ReportsView } from "@/components/reports/reports-view"
+import { ReportsContent } from "@/components/reports/reports-content"
 
 async function getReportData() {
   const supabase = await createClient()
@@ -23,14 +23,5 @@ async function getReportData() {
 export default async function ReportsPage() {
   const { platformTransactions, bankTransactions } = await getReportData()
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">レポート</h1>
-        <p className="text-muted-foreground">日本の確定申告用レポートを生成</p>
-      </div>
-
-      <ReportsView platformTransactions={platformTransactions} bankTransactions={bankTransactions} />
-    </div>
-  )
+  return <ReportsContent platformTransactions={platformTransactions} bankTransactions={bankTransactions} />
 }

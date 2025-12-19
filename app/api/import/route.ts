@@ -389,15 +389,40 @@ export async function POST(request: Request) {
 
       const getIndex = (key: string) => headerMap[key] ?? -1
 
+      const dateIndex =
+        getIndex("日期") !== -1
+          ? getIndex("日期")
+          : getIndex("Date") !== -1
+            ? getIndex("Date")
+            : getIndex("date") !== -1
+              ? getIndex("date")
+              : getIndex("日付") !== -1
+                ? getIndex("日付")
+                : -1
+
+      console.log("[v0] Platform CSV - dateIndex:", dateIndex, "headers:", headers)
+      console.log("[v0] Platform CSV - first few rows:", rows.slice(0, 3))
+
       const transactions = rows
         .filter((row) => {
-          const dateIdx = getIndex("日期")
-          return row.length >= 3 && dateIdx !== -1 && row[dateIdx]
+          // 至少有一些欄位有值
+          const hasData = row.length >= 3 && row.some((cell) => cell && cell.trim())
+          // 如果找到日期欄位，檢查它是否有值
+          const hasDate = dateIndex === -1 || (dateIndex !== -1 && row[dateIndex] && row[dateIndex].trim())
+          return hasData && hasDate
         })
         .map((row, rowIndex) => {
           const getValue = (key: string) => {
             const idx = getIndex(key)
             return idx !== -1 ? row[idx] || "" : ""
+          }
+
+          const getDateValue = () => {
+            for (const key of ["日期", "Date", "date", "日付"]) {
+              const val = getValue(key)
+              if (val) return val
+            }
+            return ""
           }
 
           const rawData: Record<string, string> = {
@@ -408,41 +433,42 @@ export async function POST(request: Request) {
             rawData[h] = row[i] || ""
           })
 
-          const payoutAmount = parseNumber(getValue("收款"))
+          const payoutAmount = parseNumber(getValue("收款") || getValue("Payout") || getValue("payout"))
 
           return {
             platform_id: platformId,
             property_id: propertyId,
             batch_id: batch.id,
-            transaction_date: parseDate(getValue("日期")),
-            payout_date: parseDate(getValue("入帳日期")),
-            type: getValue("類型"),
-            confirmation_code: getValue("確認碼"),
-            booking_date: parseDate(getValue("預訂日期")),
-            check_in_date: parseDate(getValue("開始日期")),
-            check_out_date: parseDate(getValue("結束日期")),
-            nights: Number.parseInt(getValue("晚")) || 0,
-            guest_name: getValue("客人"),
-            currency: getValue("幣別") || "JPY",
-            amount: parseNumber(getValue("金額")),
+            transaction_date: parseDate(getDateValue()),
+            payout_date: parseDate(getValue("入帳日期") || getValue("Payout Date")),
+            type: getValue("類型") || getValue("Type") || getValue("type"),
+            confirmation_code: getValue("確認碼") || getValue("Confirmation Code") || getValue("confirmation_code"),
+            booking_date: parseDate(getValue("預訂日期") || getValue("Booking Date")),
+            check_in_date: parseDate(getValue("開始日期") || getValue("Start Date")),
+            check_out_date: parseDate(getValue("結束日期") || getValue("End Date")),
+            nights: Number.parseInt(getValue("晚") || getValue("Nights") || "0") || 0,
+            guest_name: getValue("客人") || getValue("Guest") || getValue("guest"),
+            currency: getValue("幣別") || getValue("Currency") || "JPY",
+            amount: parseNumber(getValue("金額") || getValue("Amount") || getValue("amount")),
             payout_amount: payoutAmount,
-            service_fee: parseNumber(getValue("服務費")),
+            service_fee: parseNumber(getValue("服務費") || getValue("Service Fee")),
             fast_pay_fee: parseNumber(getValue("快速收款手續費")),
-            cleaning_fee: parseNumber(getValue("清潔費")),
+            cleaning_fee: parseNumber(getValue("清潔費") || getValue("Cleaning Fee")),
             linen_fee: parseNumber(getValue("床單費用")),
-            total_revenue: parseNumber(getValue("總收入")),
+            total_revenue: parseNumber(getValue("總收入") || getValue("Total")),
             accommodation_tax: parseNumber(getValue("住宿稅")),
-            revenue_year: Number.parseInt(getValue("收入年份")) || new Date().getFullYear(),
-            details: getValue("詳情"),
+            revenue_year:
+              Number.parseInt(getValue("收入年份") || String(new Date().getFullYear())) || new Date().getFullYear(),
+            details: getValue("詳情") || getValue("Details"),
             referral_code: getValue("推薦碼"),
             raw_data: rawData,
           }
         })
-        .filter((t) => t.transaction_date)
+        .filter((t) => t.transaction_date || t.type || t.payout_amount !== 0)
 
       console.log("[v0] Platform transactions count:", transactions.length)
       if (transactions.length > 0) {
-        console.log("[v0] First transaction raw_data:", transactions[0].raw_data)
+        console.log("[v0] First transaction:", JSON.stringify(transactions[0], null, 2))
       }
 
       if (transactions.length === 0) {

@@ -486,43 +486,43 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs 
                 <p>平台交易數: {debugInfo.platformCount}</p>
                 <p>銀行正數金額數: {debugInfo.bankPositiveCount}</p>
                 <p>Payout 數量: {debugInfo.payoutCount}</p>
+                <p className="font-bold text-green-600">金額交集數: {debugInfo.intersectionCount ?? 0}</p>
                 <p>配對結果數: {debugInfo.matchesCount}</p>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-blue-600">查看銀行 raw_data 欄位</summary>
-                  <pre className="mt-1 text-xs whitespace-pre-wrap">
-                    {JSON.stringify(debugInfo.sampleBankKeys, null, 2)}
-                  </pre>
-                </details>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-blue-600">查看平台 raw_data 欄位</summary>
-                  <pre className="mt-1 text-xs whitespace-pre-wrap">
-                    {JSON.stringify(debugInfo.samplePlatformKeys, null, 2)}
-                  </pre>
-                </details>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-blue-600">銀行金額範例 (前20筆)</summary>
-                  <pre className="mt-1 text-xs whitespace-pre-wrap">
-                    {JSON.stringify(debugInfo.bankAmountsSample, null, 2)}
-                  </pre>
-                </details>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-blue-600">Payout 金額範例 (前20筆)</summary>
-                  <pre className="mt-1 text-xs whitespace-pre-wrap">
-                    {JSON.stringify(debugInfo.payoutAmountsSample, null, 2)}
-                  </pre>
-                </details>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-blue-600">銀行 raw_data 範例</summary>
-                  <pre className="mt-1 text-xs whitespace-pre-wrap">
-                    {JSON.stringify(debugInfo.sampleBankRawData, null, 2)}
-                  </pre>
-                </details>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-blue-600">平台 raw_data 範例</summary>
-                  <pre className="mt-1 text-xs whitespace-pre-wrap">
-                    {JSON.stringify(debugInfo.samplePlatformRawData, null, 2)}
-                  </pre>
-                </details>
+
+                {debugInfo.intersectionAmounts && debugInfo.intersectionAmounts.length > 0 && (
+                  <div className="mt-2 p-2 bg-green-100 rounded">
+                    <p className="font-bold text-green-700">交集金額 (前50筆):</p>
+                    <p className="text-xs">{debugInfo.intersectionAmounts.join(", ")}</p>
+                  </div>
+                )}
+
+                <div className="mt-3 space-y-2">
+                  <div>
+                    <p className="font-bold">銀行金額解析範例 (前20筆):</p>
+                    <div className="mt-1 text-xs bg-background p-2 rounded max-h-32 overflow-y-auto">
+                      {debugInfo.bankAmountExamples?.map((ex: string, i: number) => <div key={i}>{ex}</div>) ||
+                        "無資料"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="font-bold">Payout 金額解析範例 (前20筆):</p>
+                    <div className="mt-1 text-xs bg-background p-2 rounded max-h-32 overflow-y-auto">
+                      {debugInfo.payoutAmountExamples?.map((ex: string, i: number) => <div key={i}>{ex}</div>) ||
+                        "無資料"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="font-bold">所有銀行金額 (排序後前50):</p>
+                    <p className="text-xs">{debugInfo.allBankAmountsSorted?.join(", ") || "無資料"}</p>
+                  </div>
+
+                  <div>
+                    <p className="font-bold">所有 Payout 金額 (排序後前50):</p>
+                    <p className="text-xs">{debugInfo.allPayoutAmountsSorted?.join(", ") || "無資料"}</p>
+                  </div>
+                </div>
               </div>
             )}
 

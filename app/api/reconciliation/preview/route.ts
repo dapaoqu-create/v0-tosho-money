@@ -1,6 +1,35 @@
 import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
+async function fetchAllRows(supabase: any, table: string) {
+  const allRows: any[] = []
+  const pageSize = 1000
+  let page = 0
+  let hasMore = true
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (error) {
+      console.error(`[v0] Error fetching ${table} page ${page}:`, error)
+      break
+    }
+
+    if (data && data.length > 0) {
+      allRows.push(...data)
+      page++
+      hasMore = data.length === pageSize
+    } else {
+      hasMore = false
+    }
+  }
+
+  return allRows
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
 
@@ -11,23 +40,13 @@ export async function POST(request: NextRequest) {
 
     debug.request = { ruleId, bankBatchIds, platformBatchIds }
 
-    const { data: bankTransactions, error: bankError } = await supabase
-      .from("bank_transactions")
-      .select("*")
-      .range(0, 9999)
+    const bankTransactions = await fetchAllRows(supabase, "bank_transactions")
+    debug.bankCount = bankTransactions.length
 
-    debug.bankCount = bankTransactions?.length || 0
-    debug.bankError = bankError?.message || null
+    const platformTransactions = await fetchAllRows(supabase, "platform_transactions")
+    debug.platformCount = platformTransactions.length
 
-    const { data: platformTransactions, error: platformError } = await supabase
-      .from("platform_transactions")
-      .select("*")
-      .range(0, 9999)
-
-    debug.platformCount = platformTransactions?.length || 0
-    debug.platformError = platformError?.message || null
-
-    if (!bankTransactions?.length || !platformTransactions?.length) {
+    if (!bankTransactions.length || !platformTransactions.length) {
       return NextResponse.json({
         success: true,
         matches: [],
@@ -35,6 +54,9 @@ export async function POST(request: NextRequest) {
         debug,
       })
     }
+
+    const bankAmountExamples: string[] = []
+    const payoutAmountExamples: string[] = []
 
     // 建立 Payout 金額映射
     const payoutByAmount = new Map<number, any[]>()
@@ -46,8 +68,13 @@ export async function POST(request: NextRequest) {
 
       if (txType === "Payout") {
         const amountStr = String(rawData["收款"] || "")
-        const cleanAmount = amountStr.replace(/[^0-9.-]/g, "").split(".")[0]
+
+        const cleanAmount = amountStr.replace(/,/g, "").replace(/\s/g, "").split(".")[0]
         const amount = Math.abs(Number.parseInt(cleanAmount) || 0)
+
+        if (payoutAmountExamples.length < 20) {
+          payoutAmountExamples.push(`"${amountStr}" -> ${amount}`)
+        }
 
         if (amount > 0) {
           allPayoutAmounts.add(amount)
@@ -67,8 +94,12 @@ export async function POST(request: NextRequest) {
       const rawData = bankTx.raw_data || {}
       const amountStr = String(rawData["入出金(円)"] || "")
 
-      const cleanAmount = amountStr.replace(/[^0-9.-]/g, "")
+      const cleanAmount = amountStr.replace(/,/g, "").replace(/\s/g, "")
       const bankAmount = Number.parseInt(cleanAmount) || 0
+
+      if (bankAmountExamples.length < 20) {
+        bankAmountExamples.push(`"${amountStr}" -> ${bankAmount}`)
+      }
 
       // 只處理正數（入金），跳過負數（支出）
       if (bankAmount > 0) {
@@ -90,13 +121,15 @@ export async function POST(request: NextRequest) {
     debug.payoutCount = allPayoutAmounts.size
     debug.bankPositiveCount = allBankAmounts.size
     debug.intersectionCount = intersection.length
-    debug.intersectionAmounts = intersection.sort((a, b) => a - b).slice(0, 30)
+    debug.intersectionAmounts = intersection.sort((a, b) => a - b).slice(0, 50)
+    debug.bankAmountExamples = bankAmountExamples
+    debug.payoutAmountExamples = payoutAmountExamples
     debug.allPayoutAmountsSorted = Array.from(allPayoutAmounts)
       .sort((a, b) => a - b)
-      .slice(0, 30)
+      .slice(0, 50)
     debug.allBankAmountsSorted = Array.from(allBankAmounts)
       .sort((a, b) => a - b)
-      .slice(0, 30)
+      .slice(0, 50)
 
     // 找出所有預訂的確認碼，按入帳日期分組
     const confirmationCodesByDate = new Map<string, string[]>()

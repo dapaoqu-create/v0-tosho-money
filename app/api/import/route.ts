@@ -5,19 +5,31 @@ async function decodeCSVContent(file: File): Promise<string> {
   const buffer = await file.arrayBuffer()
   const uint8Array = new Uint8Array(buffer)
 
+  let dataToProcess = uint8Array
+  if (uint8Array[0] === 0xef && uint8Array[1] === 0xbb && uint8Array[2] === 0xbf) {
+    console.log("[v0] Detected UTF-8 BOM, removing it")
+    dataToProcess = uint8Array.slice(3)
+  }
+
   // 嘗試用 UTF-8 解碼
-  const utf8Content = new TextDecoder("utf-8").decode(uint8Array)
+  const utf8Content = new TextDecoder("utf-8").decode(dataToProcess)
+
+  const cleanedUtf8 = utf8Content.replace(/^\uFEFF/, "")
 
   // 檢查是否有亂碼（常見的 Shift-JIS 轉 UTF-8 亂碼特徵）
   const hasMojibake =
-    utf8Content.includes("") ||
-    /[\x80-\xff]{2,}/.test(utf8Content) ||
-    (utf8Content.includes("取引") === false && file.name.includes(".csv"))
+    cleanedUtf8.includes("") ||
+    (cleanedUtf8.includes("取引") === false &&
+      cleanedUtf8.includes("日期") === false &&
+      cleanedUtf8.includes("類型") === false &&
+      cleanedUtf8.includes("Date") === false &&
+      cleanedUtf8.includes("Type") === false &&
+      file.name.toLowerCase().includes(".csv"))
 
   // 如果有亂碼跡象，嘗試用 Shift-JIS 解碼
   if (hasMojibake) {
     try {
-      const shiftJISContent = new TextDecoder("shift-jis").decode(uint8Array)
+      const shiftJISContent = new TextDecoder("shift-jis").decode(dataToProcess)
       // 驗證 Shift-JIS 解碼是否成功（應該包含日文字符）
       if (
         shiftJISContent.includes("取引") ||
@@ -36,7 +48,7 @@ async function decodeCSVContent(file: File): Promise<string> {
 
   // 也嘗試 EUC-JP
   try {
-    const eucContent = new TextDecoder("euc-jp").decode(uint8Array)
+    const eucContent = new TextDecoder("euc-jp").decode(dataToProcess)
     if (eucContent.includes("取引") || eucContent.includes("日付")) {
       console.log("[v0] Detected EUC-JP encoding")
       return eucContent
@@ -45,7 +57,8 @@ async function decodeCSVContent(file: File): Promise<string> {
     // 忽略
   }
 
-  return utf8Content
+  console.log("[v0] Using UTF-8 encoding")
+  return cleanedUtf8
 }
 
 function parseCSV(content: string): { headers: string[]; rows: string[][] } {

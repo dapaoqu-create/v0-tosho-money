@@ -151,12 +151,14 @@ export async function POST(request: Request) {
 
       const transactions = rows
         .filter((row) => row.length >= 3 && row[dateIndex])
-        .map((row) => {
+        .map((row, rowIndex) => {
           const amount = parseNumber(row[amountIndex] || "0")
           const transactionDate = parseDate(row[dateIndex])
           const transactionCode = transactionDate ? generateTransactionCode(bankCode, transactionDate, amount) : null
 
-          const rawData: Record<string, string> = {}
+          const rawData: Record<string, string> = {
+            _row_index: String(rowIndex),
+          }
           headers.forEach((h, i) => {
             rawData[h] = row[i] || ""
           })
@@ -279,7 +281,7 @@ export async function POST(request: Request) {
           const dateIdx = getIndex("日期")
           return row.length >= 3 && dateIdx !== -1 && row[dateIdx]
         })
-        .map((row) => {
+        .map((row, rowIndex) => {
           const getValue = (key: string) => {
             const idx = getIndex(key)
             return idx !== -1 ? row[idx] || "" : ""
@@ -287,6 +289,7 @@ export async function POST(request: Request) {
 
           const rawData: Record<string, string> = {
             _headers: JSON.stringify(headers),
+            _row_index: String(rowIndex),
           }
           headers.forEach((h, i) => {
             rawData[h] = row[i] || ""

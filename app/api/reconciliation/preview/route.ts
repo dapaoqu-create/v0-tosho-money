@@ -30,30 +30,34 @@ async function fetchAllRows(supabase: any, table: string) {
   return allRows
 }
 
+function parseAmount(amountStr: string): number {
+  if (!amountStr) return 0
+  const cleaned = amountStr.replace(/,/g, "").replace(/\s/g, "").split(".")[0]
+  return Math.abs(Number.parseInt(cleaned) || 0)
+}
+
 function parseDate(dateStr: string): Date | null {
   if (!dateStr) return null
-
-  // 清理字串
   const cleaned = dateStr.trim()
 
+  // 格式1: YYYYMMDD (如 20241202)
   let match = cleaned.match(/^(\d{4})(\d{2})(\d{2})$/)
   if (match) {
     return new Date(Number.parseInt(match[1]), Number.parseInt(match[2]) - 1, Number.parseInt(match[3]))
   }
 
-  // 格式2: 2024/12/14 或 2024-12-14
+  // 格式2: YYYY/MM/DD 或 YYYY-MM-DD
   match = cleaned.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
   if (match) {
     return new Date(Number.parseInt(match[1]), Number.parseInt(match[2]) - 1, Number.parseInt(match[3]))
   }
 
-  // 格式3: 12/14/2025 或 12-14-2025 (月/日/年)
+  // 格式3: MM/DD/YYYY 或 MM-DD-YYYY
   match = cleaned.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
   if (match) {
     return new Date(Number.parseInt(match[3]), Number.parseInt(match[1]) - 1, Number.parseInt(match[2]))
   }
 
-  // 格式4: 直接嘗試 Date.parse
   const parsed = Date.parse(cleaned)
   if (!isNaN(parsed)) {
     return new Date(parsed)
@@ -70,12 +74,10 @@ function daysBetween(date1: Date | null, date2: Date | null): number {
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
-
   const debug: any = {}
 
   try {
     const { ruleId, bankBatchIds, platformBatchIds } = await request.json()
-
     debug.request = { ruleId, bankBatchIds, platformBatchIds }
 
     const bankTransactions = await fetchAllRows(supabase, "bank_transactions")
@@ -93,26 +95,26 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 步驟1: 收集所有預訂（有確認碼的行），按日期和 id 排序
-    const allBookings: any[] = []
+    // 按 batch_id 和 _row_index 建立索引
+    const txByBatchAndRow = new Map<string, any>()
+    let hasRowIndex = false
 
     for (const tx of platformTransactions) {
       const rawData = tx.raw_data || {}
-      const txType = String(rawData["類型"] || "").trim()
-      const confirmCode = String(rawData["確認碼"] || "").trim()
-      const txDate = String(rawData["日期"] || "").trim()
+      const rowIndex = rawData["_row_index"]
+      const batchId = tx.batch_id
 
-      if ((txType === "預訂" || txType === "Reservation") && confirmCode) {
-        allBookings.push({
-          id: tx.id,
-          confirmationCode: confirmCode,
-          date: txDate,
-          used: false, // 標記是否已被配對
-        })
+      if (rowIndex !== undefined && rowIndex !== null) {
+        hasRowIndex = true
+        const key = `${batchId}:${rowIndex}`
+        txByBatchAndRow.set(key, tx)
       }
     }
 
-    // 步驟2: 收集所有 Payout，按日期排序
+    debug.hasRowIndex = hasRowIndex
+    debug.txByBatchAndRowSize = txByBatchAndRow.size
+
+    // 收集 Payout 並找到下一行的確認碼
     const payoutList: any[] = []
 
     for (const tx of platformTransactions) {
@@ -120,51 +122,64 @@ export async function POST(request: NextRequest) {
       const txType = String(rawData["類型"] || "").trim()
 
       if (txType === "Payout") {
-        const amountStr = String(rawData["收款"] || "")
-        const cleanAmount = amountStr.replace(/,/g, "").replace(/\s/g, "").split(".")[0]
-        const amount = Math.abs(Number.parseInt(cleanAmount) || 0)
+        const payoutAmountStr = String(rawData["收款"] || "")
+        const payoutAmount = parseAmount(payoutAmountStr)
         const txDate = String(rawData["日期"] || "").trim()
         const parsedDate = parseDate(txDate)
+        const rowIndex = rawData["_row_index"]
+        const batchId = tx.batch_id
 
-        if (amount > 0) {
+        let confirmationCode = null
+
+        // 方法1: 使用行號找下一行的確認碼
+        if (hasRowIndex && rowIndex !== undefined && rowIndex !== null) {
+          const nextRowIndex = Number.parseInt(rowIndex) + 1
+          const nextKey = `${batchId}:${nextRowIndex}`
+          const nextTx = txByBatchAndRow.get(nextKey)
+
+          if (nextTx) {
+            const nextRawData = nextTx.raw_data || {}
+            const nextConfirmCode = String(nextRawData["確認碼"] || "").trim()
+            if (nextConfirmCode) {
+              confirmationCode = nextConfirmCode
+            }
+          }
+        }
+
+        if (payoutAmount > 0) {
           payoutList.push({
             id: tx.id,
-            amount,
+            amount: payoutAmount,
             date: txDate,
             parsedDate,
             rawData,
-            confirmationCode: null, // 稍後配對
-            bookingId: null,
+            confirmationCode,
+            rowIndex,
+            batchId,
           })
         }
       }
     }
 
-    // 步驟3: 為每個 Payout 配對一個確認碼（一對一）
-    // 規則：找同一天、尚未被使用的第一個預訂
-    for (const payout of payoutList) {
-      // 找同一天且尚未被使用的預訂
-      const sameDayBooking = allBookings.find((b) => b.date === payout.date && !b.used)
+    debug.payoutCount = payoutList.length
+    debug.payoutsWithConfirmCode = payoutList.filter((p) => p.confirmationCode).length
+    debug.payoutExamples = payoutList.slice(0, 10).map((p) => ({
+      amount: p.amount,
+      date: p.date,
+      rowIndex: p.rowIndex,
+      confirmationCode: p.confirmationCode,
+    }))
 
-      if (sameDayBooking) {
-        payout.confirmationCode = sameDayBooking.confirmationCode
-        payout.bookingId = sameDayBooking.id
-        sameDayBooking.used = true // 標記為已使用
-      }
-    }
-
-    // 步驟4: 收集銀行入金交易
+    // 收集銀行入金交易
     const bankList: any[] = []
 
     for (const bankTx of bankTransactions) {
       const rawData = bankTx.raw_data || {}
       const amountStr = String(rawData["入出金(円)"] || "")
-      const cleanAmount = amountStr.replace(/,/g, "").replace(/\s/g, "")
-      const bankAmount = Number.parseInt(cleanAmount) || 0
+      const bankAmount = parseAmount(amountStr)
       const txDate = String(rawData["取引日"] || "").trim()
       const parsedDate = parseDate(txDate)
 
-      // 只處理正數（入金），跳過負數（支出）
       if (bankAmount > 0) {
         bankList.push({
           id: bankTx.id,
@@ -178,9 +193,6 @@ export async function POST(request: NextRequest) {
     }
 
     debug.bankPositiveCount = bankList.length
-    debug.payoutCount = payoutList.length
-    debug.bookingsCount = allBookings.length
-    debug.payoutsWithConfirmCode = payoutList.filter((p) => p.confirmationCode).length
 
     // 按金額分組
     const payoutByAmount = new Map<number, any[]>()
@@ -212,20 +224,7 @@ export async function POST(request: NextRequest) {
     debug.intersectionCount = intersection.length
     debug.intersectionAmounts = intersection.sort((a, b) => a - b).slice(0, 50)
 
-    debug.bankAmountExamples = bankList.slice(0, 20).map((b) => {
-      const parsed = b.parsedDate
-        ? `${b.parsedDate.getFullYear()}/${b.parsedDate.getMonth() + 1}/${b.parsedDate.getDate()}`
-        : "null"
-      return `"${b.rawData["入出金(円)"]}" -> ${b.amount} (${b.date} => ${parsed})`
-    })
-    debug.payoutAmountExamples = payoutList.slice(0, 20).map((p) => {
-      const parsed = p.parsedDate
-        ? `${p.parsedDate.getFullYear()}/${p.parsedDate.getMonth() + 1}/${p.parsedDate.getDate()}`
-        : "null"
-      return `"${p.rawData["收款"]}" -> ${p.amount} (${p.date} => ${parsed}) [確認碼: ${p.confirmationCode || "無"}]`
-    })
-
-    // 步驟5: 配對銀行和 Payout
+    // 配對銀行和 Payout（金額相同 + 日期7天內）
     const matches: any[] = []
     let matchIndex = 1
     const usedPayoutIds = new Set<string>()
@@ -235,7 +234,6 @@ export async function POST(request: NextRequest) {
       const bankTxList = bankByAmount.get(amount) || []
       const payoutTxList = payoutByAmount.get(amount) || []
 
-      // 對於每個銀行交易，找到日期最接近的 Payout（7天內）
       for (const bankTx of bankTxList) {
         if (usedBankIds.has(bankTx.id)) continue
 
@@ -264,7 +262,6 @@ export async function POST(request: NextRequest) {
             daysDiff: bestDaysDiff,
             bankTransactionId: bankTx.id,
             platformTransactionId: bestMatch.id,
-            platformBookingId: bestMatch.bookingId,
           })
 
           usedPayoutIds.add(bestMatch.id)
@@ -273,26 +270,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const unmatchedBankCount = bankList.filter((b) => !usedBankIds.has(b.id)).length
-    const unmatchedPayoutCount = payoutList.filter((p) => !usedPayoutIds.has(p.id)).length
-
     debug.matchesCount = matches.length
-    debug.unmatchedBankCount = unmatchedBankCount
-    debug.unmatchedPayoutCount = unmatchedPayoutCount
-    debug.bankMapSize = bankByAmount.size
-    debug.payoutMapSize = payoutByAmount.size
+    debug.unmatchedBankCount = bankList.filter((b) => !usedBankIds.has(b.id)).length
+    debug.unmatchedPayoutCount = payoutList.filter((p) => !usedPayoutIds.has(p.id)).length
 
-    const unmatchedBankExamples = bankList
-      .filter((b) => !usedBankIds.has(b.id))
-      .slice(0, 10)
-      .map((b) => ({
-        amount: b.amount,
-        date: b.date,
-        hasPayoutWithSameAmount: payoutByAmount.has(b.amount),
-        payoutDates: (payoutByAmount.get(b.amount) || []).map((p) => p.date),
-      }))
-
-    debug.unmatchedBankExamples = unmatchedBankExamples
+    if (!hasRowIndex) {
+      debug.warning = "現有資料沒有行號(_row_index)，確認碼可能不準確。請重新匯入 CSV 以獲得正確的確認碼配對。"
+    }
 
     return NextResponse.json({
       success: true,

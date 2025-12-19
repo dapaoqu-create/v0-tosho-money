@@ -30,6 +30,40 @@ async function fetchAllRows(supabase: any, table: string) {
   return allRows
 }
 
+function parseDate(dateStr: string): Date | null {
+  if (!dateStr) return null
+
+  // 清理字串
+  const cleaned = dateStr.trim()
+
+  // 嘗試不同格式
+  // 格式1: 2024/12/14 或 2024-12-14
+  let match = cleaned.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+  if (match) {
+    return new Date(Number.parseInt(match[1]), Number.parseInt(match[2]) - 1, Number.parseInt(match[3]))
+  }
+
+  // 格式2: 12/14/2025 或 12-14-2025 (月/日/年)
+  match = cleaned.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
+  if (match) {
+    return new Date(Number.parseInt(match[3]), Number.parseInt(match[1]) - 1, Number.parseInt(match[2]))
+  }
+
+  // 格式3: 直接嘗試 Date.parse
+  const parsed = Date.parse(cleaned)
+  if (!isNaN(parsed)) {
+    return new Date(parsed)
+  }
+
+  return null
+}
+
+function daysBetween(date1: Date | null, date2: Date | null): number {
+  if (!date1 || !date2) return Number.POSITIVE_INFINITY
+  const diffTime = Math.abs(date2.getTime() - date1.getTime())
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
 
@@ -55,62 +89,104 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const bankAmountExamples: string[] = []
-    const payoutAmountExamples: string[] = []
+    // 根據用戶說明：Payout 行的確認碼在同一天的預訂行中
+    const payoutList: any[] = []
+    const bookingsByDate = new Map<string, any[]>()
 
-    // 建立 Payout 金額映射
-    const payoutByAmount = new Map<number, any[]>()
-    const allPayoutAmounts = new Set<number>()
+    // 先收集所有預訂（有確認碼的行）
+    for (const tx of platformTransactions) {
+      const rawData = tx.raw_data || {}
+      const txType = String(rawData["類型"] || "").trim()
+      const confirmCode = String(rawData["確認碼"] || "").trim()
+      const txDate = String(rawData["日期"] || "").trim()
 
+      if ((txType === "預訂" || txType === "Reservation") && confirmCode) {
+        if (!bookingsByDate.has(txDate)) {
+          bookingsByDate.set(txDate, [])
+        }
+        bookingsByDate.get(txDate)!.push({
+          id: tx.id,
+          confirmationCode: confirmCode,
+          date: txDate,
+        })
+      }
+    }
+
+    // 收集所有 Payout，並找到對應的確認碼
     for (const tx of platformTransactions) {
       const rawData = tx.raw_data || {}
       const txType = String(rawData["類型"] || "").trim()
 
       if (txType === "Payout") {
         const amountStr = String(rawData["收款"] || "")
-
         const cleanAmount = amountStr.replace(/,/g, "").replace(/\s/g, "").split(".")[0]
         const amount = Math.abs(Number.parseInt(cleanAmount) || 0)
-
-        if (payoutAmountExamples.length < 20) {
-          payoutAmountExamples.push(`"${amountStr}" -> ${amount}`)
-        }
+        const txDate = String(rawData["日期"] || "").trim()
+        const parsedDate = parseDate(txDate)
 
         if (amount > 0) {
-          allPayoutAmounts.add(amount)
-          if (!payoutByAmount.has(amount)) {
-            payoutByAmount.set(amount, [])
-          }
-          payoutByAmount.get(amount)!.push(tx)
+          const sameDayBookings = bookingsByDate.get(txDate) || []
+          const confirmationCodes = sameDayBookings.map((b) => b.confirmationCode)
+          const bookingIds = sameDayBookings.map((b) => b.id)
+
+          payoutList.push({
+            id: tx.id,
+            amount,
+            date: txDate,
+            parsedDate,
+            confirmationCodes,
+            bookingIds,
+            rawData,
+          })
         }
       }
     }
 
-    // 建立銀行金額映射（只處理正數入金）
-    const allBankAmounts = new Set<number>()
-    const bankAmountToTx = new Map<number, any[]>()
+    const bankList: any[] = []
 
     for (const bankTx of bankTransactions) {
       const rawData = bankTx.raw_data || {}
       const amountStr = String(rawData["入出金(円)"] || "")
-
       const cleanAmount = amountStr.replace(/,/g, "").replace(/\s/g, "")
       const bankAmount = Number.parseInt(cleanAmount) || 0
-
-      if (bankAmountExamples.length < 20) {
-        bankAmountExamples.push(`"${amountStr}" -> ${bankAmount}`)
-      }
+      const txDate = String(rawData["取引日"] || "").trim()
+      const parsedDate = parseDate(txDate)
 
       // 只處理正數（入金），跳過負數（支出）
       if (bankAmount > 0) {
-        allBankAmounts.add(bankAmount)
-        if (!bankAmountToTx.has(bankAmount)) {
-          bankAmountToTx.set(bankAmount, [])
-        }
-        bankAmountToTx.get(bankAmount)!.push(bankTx)
+        bankList.push({
+          id: bankTx.id,
+          amount: bankAmount,
+          date: txDate,
+          parsedDate,
+          transactionCode: bankTx.transaction_code,
+          rawData,
+        })
       }
     }
 
+    debug.bankPositiveCount = bankList.length
+    debug.payoutCount = payoutList.length
+
+    const payoutByAmount = new Map<number, any[]>()
+    for (const payout of payoutList) {
+      if (!payoutByAmount.has(payout.amount)) {
+        payoutByAmount.set(payout.amount, [])
+      }
+      payoutByAmount.get(payout.amount)!.push(payout)
+    }
+
+    const bankByAmount = new Map<number, any[]>()
+    for (const bank of bankList) {
+      if (!bankByAmount.has(bank.amount)) {
+        bankByAmount.set(bank.amount, [])
+      }
+      bankByAmount.get(bank.amount)!.push(bank)
+    }
+
+    // 找交集金額
+    const allBankAmounts = new Set(bankList.map((b) => b.amount))
+    const allPayoutAmounts = new Set(payoutList.map((p) => p.amount))
     const intersection: number[] = []
     for (const bankAmt of allBankAmounts) {
       if (allPayoutAmounts.has(bankAmt)) {
@@ -118,93 +194,80 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    debug.payoutCount = allPayoutAmounts.size
-    debug.bankPositiveCount = allBankAmounts.size
     debug.intersectionCount = intersection.length
     debug.intersectionAmounts = intersection.sort((a, b) => a - b).slice(0, 50)
-    debug.bankAmountExamples = bankAmountExamples
-    debug.payoutAmountExamples = payoutAmountExamples
-    debug.allPayoutAmountsSorted = Array.from(allPayoutAmounts)
-      .sort((a, b) => a - b)
-      .slice(0, 50)
-    debug.allBankAmountsSorted = Array.from(allBankAmounts)
-      .sort((a, b) => a - b)
-      .slice(0, 50)
-
-    // 找出所有預訂的確認碼，按入帳日期分組
-    const confirmationCodesByDate = new Map<string, string[]>()
-    for (const tx of platformTransactions) {
-      const rawData = tx.raw_data || {}
-      const txType = String(rawData["類型"] || "").trim()
-      const confirmCode = String(rawData["確認碼"] || "").trim()
-      const accountDate = String(rawData["入帳日期"] || "").trim()
-
-      if ((txType === "預訂" || txType === "Reservation") && confirmCode && accountDate) {
-        if (!confirmationCodesByDate.has(accountDate)) {
-          confirmationCodesByDate.set(accountDate, [])
-        }
-        confirmationCodesByDate.get(accountDate)!.push(confirmCode)
-      }
-    }
+    debug.bankAmountExamples = bankList
+      .slice(0, 20)
+      .map((b) => `"${b.rawData["入出金(円)"]}" -> ${b.amount} (${b.date})`)
+    debug.payoutAmountExamples = payoutList.slice(0, 20).map((p) => `"${p.rawData["收款"]}" -> ${p.amount} (${p.date})`)
 
     const matches: any[] = []
     let matchIndex = 1
     const usedPayoutIds = new Set<string>()
     const usedBankIds = new Set<string>()
 
-    const skippedBankReconciled = 0
-    const skippedPayoutReconciled = 0
-    let attemptedMatches = 0
-
     for (const amount of intersection) {
-      const bankTxList = bankAmountToTx.get(amount) || []
+      const bankTxList = bankByAmount.get(amount) || []
       const payoutTxList = payoutByAmount.get(amount) || []
 
+      // 對於每個銀行交易，找到日期最接近的 Payout
       for (const bankTx of bankTxList) {
         if (usedBankIds.has(bankTx.id)) continue
 
-        // if (bankTx.reconciliation_status === "reconciled") {
-        //   skippedBankReconciled++
-        //   continue
-        // }
+        let bestMatch: any = null
+        let bestDaysDiff = Number.POSITIVE_INFINITY
 
         for (const payoutTx of payoutTxList) {
           if (usedPayoutIds.has(payoutTx.id)) continue
 
-          // if (payoutTx.reconciliation_status === "reconciled") {
-          //   skippedPayoutReconciled++
-          //   continue
-          // }
+          const daysDiff = daysBetween(bankTx.parsedDate, payoutTx.parsedDate)
 
-          attemptedMatches++
+          if (daysDiff <= 7 && daysDiff < bestDaysDiff) {
+            bestDaysDiff = daysDiff
+            bestMatch = payoutTx
+          }
+        }
 
-          const bankDate = String(bankTx.raw_data?.["取引日"] || "")
-          const payoutDate = String(payoutTx.raw_data?.["日期"] || "")
-          const confirmationCodes = confirmationCodesByDate.get(payoutDate) || []
-
+        if (bestMatch) {
           matches.push({
             index: matchIndex++,
-            confirmationCode: confirmationCodes.join(", ") || "-",
-            transactionCode: bankTx.transaction_code || "-",
-            transactionDate: bankDate,
+            confirmationCode: bestMatch.confirmationCodes.length > 0 ? bestMatch.confirmationCodes.join(", ") : "-",
+            transactionCode: bankTx.transactionCode || "-",
+            transactionDate: bankTx.date,
+            payoutDate: bestMatch.date,
             amount: amount,
+            daysDiff: bestDaysDiff,
             bankTransactionId: bankTx.id,
-            platformTransactionId: payoutTx.id,
+            platformTransactionId: bestMatch.id,
+            platformBookingIds: bestMatch.bookingIds,
           })
 
-          usedPayoutIds.add(payoutTx.id)
+          usedPayoutIds.add(bestMatch.id)
           usedBankIds.add(bankTx.id)
-          break
         }
       }
     }
 
+    const unmatchedBankCount = bankList.filter((b) => !usedBankIds.has(b.id)).length
+    const unmatchedPayoutCount = payoutList.filter((p) => !usedPayoutIds.has(p.id)).length
+
     debug.matchesCount = matches.length
-    debug.skippedBankReconciled = skippedBankReconciled
-    debug.skippedPayoutReconciled = skippedPayoutReconciled
-    debug.attemptedMatches = attemptedMatches
-    debug.bankMapSize = bankAmountToTx.size
+    debug.unmatchedBankCount = unmatchedBankCount
+    debug.unmatchedPayoutCount = unmatchedPayoutCount
+    debug.bankMapSize = bankByAmount.size
     debug.payoutMapSize = payoutByAmount.size
+
+    const unmatchedBankExamples = bankList
+      .filter((b) => !usedBankIds.has(b.id))
+      .slice(0, 10)
+      .map((b) => ({
+        amount: b.amount,
+        date: b.date,
+        hasPayoutWithSameAmount: payoutByAmount.has(b.amount),
+        payoutDates: (payoutByAmount.get(b.amount) || []).map((p) => p.date),
+      }))
+
+    debug.unmatchedBankExamples = unmatchedBankExamples
 
     return NextResponse.json({
       success: true,

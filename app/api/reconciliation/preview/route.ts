@@ -147,11 +147,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 進行配對
     const matches: any[] = []
     let matchIndex = 1
     const usedPayoutIds = new Set<string>()
     const usedBankIds = new Set<string>()
+
+    const skippedBankReconciled = 0
+    const skippedPayoutReconciled = 0
+    let attemptedMatches = 0
 
     for (const amount of intersection) {
       const bankTxList = bankAmountToTx.get(amount) || []
@@ -159,11 +162,21 @@ export async function POST(request: NextRequest) {
 
       for (const bankTx of bankTxList) {
         if (usedBankIds.has(bankTx.id)) continue
-        if (bankTx.reconciliation_status === "reconciled") continue
+
+        // if (bankTx.reconciliation_status === "reconciled") {
+        //   skippedBankReconciled++
+        //   continue
+        // }
 
         for (const payoutTx of payoutTxList) {
           if (usedPayoutIds.has(payoutTx.id)) continue
-          if (payoutTx.reconciliation_status === "reconciled") continue
+
+          // if (payoutTx.reconciliation_status === "reconciled") {
+          //   skippedPayoutReconciled++
+          //   continue
+          // }
+
+          attemptedMatches++
 
           const bankDate = String(bankTx.raw_data?.["取引日"] || "")
           const payoutDate = String(payoutTx.raw_data?.["日期"] || "")
@@ -187,6 +200,11 @@ export async function POST(request: NextRequest) {
     }
 
     debug.matchesCount = matches.length
+    debug.skippedBankReconciled = skippedBankReconciled
+    debug.skippedPayoutReconciled = skippedPayoutReconciled
+    debug.attemptedMatches = attemptedMatches
+    debug.bankMapSize = bankAmountToTx.size
+    debug.payoutMapSize = payoutByAmount.size
 
     return NextResponse.json({
       success: true,

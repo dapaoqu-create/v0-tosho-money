@@ -1,6 +1,53 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
+async function decodeCSVContent(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer()
+  const uint8Array = new Uint8Array(buffer)
+
+  // 嘗試用 UTF-8 解碼
+  const utf8Content = new TextDecoder("utf-8").decode(uint8Array)
+
+  // 檢查是否有亂碼（常見的 Shift-JIS 轉 UTF-8 亂碼特徵）
+  const hasMojibake =
+    utf8Content.includes("") ||
+    /[\x80-\xff]{2,}/.test(utf8Content) ||
+    (utf8Content.includes("取引") === false && file.name.includes(".csv"))
+
+  // 如果有亂碼跡象，嘗試用 Shift-JIS 解碼
+  if (hasMojibake) {
+    try {
+      const shiftJISContent = new TextDecoder("shift-jis").decode(uint8Array)
+      // 驗證 Shift-JIS 解碼是否成功（應該包含日文字符）
+      if (
+        shiftJISContent.includes("取引") ||
+        shiftJISContent.includes("日付") ||
+        shiftJISContent.includes("残高") ||
+        shiftJISContent.includes("入出金") ||
+        /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(shiftJISContent)
+      ) {
+        console.log("[v0] Detected Shift-JIS encoding, converted successfully")
+        return shiftJISContent
+      }
+    } catch (e) {
+      console.log("[v0] Shift-JIS decode failed, using UTF-8")
+    }
+  }
+
+  // 也嘗試 EUC-JP
+  try {
+    const eucContent = new TextDecoder("euc-jp").decode(uint8Array)
+    if (eucContent.includes("取引") || eucContent.includes("日付")) {
+      console.log("[v0] Detected EUC-JP encoding")
+      return eucContent
+    }
+  } catch (e) {
+    // 忽略
+  }
+
+  return utf8Content
+}
+
 function parseCSV(content: string): { headers: string[]; rows: string[][] } {
   const lines = content.split(/\r?\n/).filter((line) => line.trim())
 
@@ -116,7 +163,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "ファイルが必要です" }, { status: 400 })
     }
 
-    const content = await file.text()
+    const content = await decodeCSVContent(file)
     const { headers, rows } = parseCSV(content)
 
     const debugInfo = {

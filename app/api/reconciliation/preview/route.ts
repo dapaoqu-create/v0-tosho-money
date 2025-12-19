@@ -11,16 +11,18 @@ export async function POST(request: NextRequest) {
 
     debug.request = { ruleId, bankBatchIds, platformBatchIds }
 
-    // 查詢所有銀行交易
-    const { data: bankTransactions, error: bankError } = await supabase.from("bank_transactions").select("*")
+    const { data: bankTransactions, error: bankError } = await supabase
+      .from("bank_transactions")
+      .select("*")
+      .range(0, 9999)
 
     debug.bankCount = bankTransactions?.length || 0
     debug.bankError = bankError?.message || null
 
-    // 查詢所有平台交易
     const { data: platformTransactions, error: platformError } = await supabase
       .from("platform_transactions")
       .select("*")
+      .range(0, 9999)
 
     debug.platformCount = platformTransactions?.length || 0
     debug.platformError = platformError?.message || null
@@ -34,6 +36,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // 建立 Payout 金額映射
     const payoutByAmount = new Map<number, any[]>()
     const allPayoutAmounts = new Set<number>()
 
@@ -56,6 +59,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 建立銀行金額映射（只處理正數入金）
     const allBankAmounts = new Set<number>()
     const bankAmountToTx = new Map<number, any[]>()
 
@@ -66,6 +70,7 @@ export async function POST(request: NextRequest) {
       const cleanAmount = amountStr.replace(/[^0-9.-]/g, "")
       const bankAmount = Number.parseInt(cleanAmount) || 0
 
+      // 只處理正數（入金），跳過負數（支出）
       if (bankAmount > 0) {
         allBankAmounts.add(bankAmount)
         if (!bankAmountToTx.has(bankAmount)) {
@@ -85,18 +90,13 @@ export async function POST(request: NextRequest) {
     debug.payoutCount = allPayoutAmounts.size
     debug.bankPositiveCount = allBankAmounts.size
     debug.intersectionCount = intersection.length
-    debug.intersectionAmounts = intersection.slice(0, 30)
-    debug.allPayoutAmounts = Array.from(allPayoutAmounts)
+    debug.intersectionAmounts = intersection.sort((a, b) => a - b).slice(0, 30)
+    debug.allPayoutAmountsSorted = Array.from(allPayoutAmounts)
       .sort((a, b) => a - b)
-      .slice(0, 50)
-    debug.allBankAmounts = Array.from(allBankAmounts)
+      .slice(0, 30)
+    debug.allBankAmountsSorted = Array.from(allBankAmounts)
       .sort((a, b) => a - b)
-      .slice(0, 50)
-
-    const matches: any[] = []
-    let matchIndex = 1
-    const usedPayoutIds = new Set<string>()
-    const usedBankIds = new Set<string>()
+      .slice(0, 30)
 
     // 找出所有預訂的確認碼，按入帳日期分組
     const confirmationCodesByDate = new Map<string, string[]>()
@@ -113,6 +113,12 @@ export async function POST(request: NextRequest) {
         confirmationCodesByDate.get(accountDate)!.push(confirmCode)
       }
     }
+
+    // 進行配對
+    const matches: any[] = []
+    let matchIndex = 1
+    const usedPayoutIds = new Set<string>()
+    const usedBankIds = new Set<string>()
 
     for (const amount of intersection) {
       const bankTxList = bankAmountToTx.get(amount) || []

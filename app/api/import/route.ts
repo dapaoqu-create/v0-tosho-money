@@ -41,20 +41,44 @@ function parseCSV(content: string): { headers: string[]; rows: string[][] } {
 function parseDate(dateStr: string): string | null {
   if (!dateStr) return null
 
-  if (/^\d{8}$/.test(dateStr)) {
-    const year = dateStr.slice(0, 4)
-    const month = dateStr.slice(4, 6)
-    const day = dateStr.slice(6, 8)
+  const cleaned = dateStr.trim().replace(/^"|"$/g, "")
+
+  // YYYYMMDD 格式 (例如 20241202)
+  if (/^\d{8}$/.test(cleaned)) {
+    const year = cleaned.slice(0, 4)
+    const month = cleaned.slice(4, 6)
+    const day = cleaned.slice(6, 8)
     return `${year}-${month}-${day}`
   }
 
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
-    const [month, day, year] = dateStr.split("/")
+  if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(cleaned)) {
+    const [year, month, day] = cleaned.split("/")
     return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
   }
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return dateStr
+  // MM/DD/YYYY 格式 (例如 12/02/2024)
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(cleaned)) {
+    const [month, day, year] = cleaned.split("/")
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
+  }
+
+  // YYYY-MM-DD 格式
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+    return cleaned
+  }
+
+  if (/^\d{4}\.\d{1,2}\.\d{1,2}$/.test(cleaned)) {
+    const [year, month, day] = cleaned.split(".")
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
+  }
+
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(cleaned)) {
+    const parts = cleaned.split("/")
+    // 如果第一個數字 > 12，可能是日期
+    if (Number.parseInt(parts[0]) > 12) {
+      const [day, month, year] = parts
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`
+    }
   }
 
   return null
@@ -95,8 +119,15 @@ export async function POST(request: Request) {
     const content = await file.text()
     const { headers, rows } = parseCSV(content)
 
+    const debugInfo = {
+      headers,
+      firstRow: rows[0],
+      rowCount: rows.length,
+    }
+
     console.log("[v0] Parsed CSV headers:", headers)
-    console.log("[v0] First row:", rows[0])
+    console.log("[v0] Row count:", rows.length)
+    if (rows[0]) console.log("[v0] First row:", rows[0])
 
     const supabase = await createClient()
 
@@ -144,17 +175,32 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "インポートバッチの作成に失敗しました" }, { status: 500 })
       }
 
-      const dateIndex = findHeaderIndex(headers, "取引日")
-      const amountIndex = findHeaderIndex(headers, "入出金")
-      const balanceIndex = findHeaderIndex(headers, "残高")
-      const descIndex = findHeaderIndex(headers, "入出金先")
+      const dateIndex = findHeaderIndex(headers, "取引日", "取引日付", "日付", "date", "Date")
+      const amountIndex = findHeaderIndex(headers, "入出金", "入出金(円)", "金額", "amount", "Amount")
+      const balanceIndex = findHeaderIndex(headers, "残高", "残高(円)", "balance", "Balance")
+      const descIndex = findHeaderIndex(headers, "入出金先", "摘要", "内容", "description")
+
+      console.log(
+        "[v0] Bank column indices - date:",
+        dateIndex,
+        "amount:",
+        amountIndex,
+        "balance:",
+        balanceIndex,
+        "desc:",
+        descIndex,
+      )
 
       const transactions = rows
-        .filter((row) => row.length >= 3 && row[dateIndex])
+        .filter((row) => row.length >= 2 && row.some((cell) => cell && cell.trim()))
         .map((row, rowIndex) => {
-          const amount = parseNumber(row[amountIndex] || "0")
-          const transactionDate = parseDate(row[dateIndex])
-          const transactionCode = transactionDate ? generateTransactionCode(bankCode, transactionDate, amount) : null
+          const dateStr = dateIndex !== -1 ? row[dateIndex] : ""
+          const amountStr = amountIndex !== -1 ? row[amountIndex] : "0"
+          const amount = parseNumber(amountStr)
+          const transactionDate = parseDate(dateStr)
+          const transactionCode = transactionDate
+            ? generateTransactionCode(bankCode, transactionDate, amount)
+            : `${bankCode}ROW${rowIndex}`
 
           const rawData: Record<string, string> = {
             _row_index: String(rowIndex),
@@ -168,18 +214,32 @@ export async function POST(request: Request) {
             batch_id: batch.id,
             transaction_date: transactionDate,
             amount,
-            balance: parseNumber(row[balanceIndex] || "0"),
-            description: row[descIndex] || "",
+            balance: balanceIndex !== -1 ? parseNumber(row[balanceIndex] || "0") : 0,
+            description: descIndex !== -1 ? row[descIndex] || "" : "",
             is_income: amount > 0,
             transaction_code: transactionCode,
             raw_data: rawData,
           }
         })
-        .filter((t) => t.transaction_date)
+        .map((t) => ({
+          ...t,
+          transaction_date: t.transaction_date || new Date().toISOString().split("T")[0],
+        }))
+
+      console.log("[v0] Bank transactions to insert:", transactions.length)
+      if (transactions.length > 0) {
+        console.log("[v0] First bank transaction:", JSON.stringify(transactions[0], null, 2))
+      }
 
       if (transactions.length === 0) {
         await supabase.from("csv_import_batches").delete().eq("id", batch.id)
-        return NextResponse.json({ error: "有効なデータが見つかりませんでした" }, { status: 400 })
+        return NextResponse.json(
+          {
+            error: "有効なデータが見つかりませんでした",
+            debug: debugInfo,
+          },
+          { status: 400 },
+        )
       }
 
       const { error: insertError } = await supabase.from("bank_transactions").insert(transactions)
@@ -187,12 +247,18 @@ export async function POST(request: Request) {
       if (insertError) {
         console.error("Insert error:", insertError)
         await supabase.from("csv_import_batches").delete().eq("id", batch.id)
-        return NextResponse.json({ error: "データの挿入に失敗しました" }, { status: 500 })
+        return NextResponse.json(
+          {
+            error: `データの挿入に失敗しました: ${insertError.message}`,
+            debug: debugInfo,
+          },
+          { status: 500 },
+        )
       }
 
       await supabase.from("csv_import_batches").update({ records_count: transactions.length }).eq("id", batch.id)
 
-      return NextResponse.json({ success: true, count: transactions.length, batchId: batch.id })
+      return NextResponse.json({ success: true, count: transactions.length, batchId: batch.id, debug: debugInfo })
     }
 
     if (type === "platform") {
@@ -353,6 +419,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "無効なインポートタイプです" }, { status: 400 })
   } catch (error) {
     console.error("Import error:", error)
-    return NextResponse.json({ error: "インポート処理中にエラーが発生しました" }, { status: 500 })
+    return NextResponse.json({ error: `インポート処理中にエラーが発生しました: ${error}` }, { status: 500 })
   }
 }

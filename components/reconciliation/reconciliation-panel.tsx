@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { RefreshCcw, Settings, FileText, Building2, Check, AlertCircle, Eye, History } from "lucide-react"
+import { RefreshCcw, Settings, FileText, Building2, Check, AlertCircle, Eye, History, CheckCircle } from "lucide-react"
 import { useLanguage } from "@/lib/i18n/context"
 
 interface ReconciliationRule {
@@ -53,43 +53,103 @@ interface ReconciliationMatch {
 interface ReconciliationLog {
   id: string
   rule_name: string
-  matched_count: number
+  matches_count: number
   status: string
   created_at: string
-  confirmed_at?: string
 }
 
 interface ReconciliationPanelProps {
   rules: ReconciliationRule[]
   bankBatches: ImportBatch[]
   platformBatches: ImportBatch[]
-  logs?: ReconciliationLog[]
+  logs: ReconciliationLog[]
 }
 
-export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs = [] }: ReconciliationPanelProps) {
+export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs }: ReconciliationPanelProps) {
+  const { t } = useLanguage()
   const router = useRouter()
-  const { t, language } = useLanguage()
-  const [selectedRule, setSelectedRule] = useState<string | null>(rules[0]?.id || null)
+  const [selectedRule, setSelectedRule] = useState<string | null>(null)
   const [selectedBankBatches, setSelectedBankBatches] = useState<string[]>([])
   const [selectedPlatformBatches, setSelectedPlatformBatches] = useState<string[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
-  const [previewMatches, setPreviewMatches] = useState<ReconciliationMatch[]>([])
-  const [previewLogId, setPreviewLogId] = useState<string | null>(null)
   const [showPreview, setShowPreview] = useState(false)
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-  const [result, setResult] = useState<{ success: boolean; message: string; matched: number } | null>(null)
+  const [previewMatches, setPreviewMatches] = useState<ReconciliationMatch[]>([])
   const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [previewPage, setPreviewPage] = useState(1)
+  const previewPageSize = 100
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString(language === "ja" ? "ja-JP" : language === "zh-TW" ? "zh-TW" : "en-US")
+  const handlePreview = async () => {
+    if (!selectedRule || selectedBankBatches.length === 0 || selectedPlatformBatches.length === 0) {
+      return
+    }
+
+    setIsProcessing(true)
+    setShowPreview(false)
+    setPreviewMatches([])
+    setDebugInfo(null)
+
+    try {
+      const response = await fetch("/api/reconciliation/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ruleId: selectedRule,
+          bankBatchIds: selectedBankBatches,
+          platformBatchIds: selectedPlatformBatches,
+        }),
+      })
+
+      const data = await response.json()
+      console.log("[v0] API Response:", data)
+      console.log("[v0] Matches count:", data.matches?.length || 0)
+      console.log("[v0] First 3 matches:", data.matches?.slice(0, 3))
+      console.log("[v0] Debug info:", data.debug)
+
+      if (data.debug) {
+        setDebugInfo(data.debug)
+      }
+
+      if (data.matches && data.matches.length > 0) {
+        console.log("[v0] Setting previewMatches:", data.matches.length)
+        setPreviewMatches(data.matches)
+        setShowPreview(true)
+        setPreviewPage(1)
+      } else {
+        setPreviewMatches([])
+        setShowPreview(true)
+      }
+    } catch (error) {
+      console.error("[v0] Preview error:", error)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
-  const formatAmount = (amount: number) => {
-    return new Intl.NumberFormat(language === "ja" ? "ja-JP" : language === "zh-TW" ? "zh-TW" : "en-US", {
-      style: "currency",
-      currency: "JPY",
-      maximumFractionDigits: 0,
-    }).format(amount)
+  const handleConfirm = async () => {
+    setIsProcessing(true)
+
+    try {
+      const response = await fetch("/api/reconciliation/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ruleId: selectedRule,
+          matches: previewMatches,
+        }),
+      })
+
+      if (response.ok) {
+        setShowPreview(false)
+        setPreviewMatches([])
+        setShowConfirmDialog(false)
+        router.refresh()
+      }
+    } catch (error) {
+      console.error("Confirm error:", error)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const toggleBankBatch = (id: string) => {
@@ -100,294 +160,70 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs 
     setSelectedPlatformBatches((prev) => (prev.includes(id) ? prev.filter((b) => b !== id) : [...prev, id]))
   }
 
-  const handlePreview = async () => {
-    if (!selectedRule || selectedBankBatches.length === 0 || selectedPlatformBatches.length === 0) {
-      return
-    }
-
-    setIsProcessing(true)
-    setResult(null)
-    setPreviewMatches([])
-    setDebugInfo(null)
-
-    try {
-      const res = await fetch("/api/reconciliation/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ruleId: selectedRule,
-          bankBatchIds: selectedBankBatches,
-          platformBatchIds: selectedPlatformBatches,
-        }),
-      })
-
-      const data = await res.json()
-
-      console.log("[v0] API Response:", data)
-      console.log("[v0] Matches count:", data.matches?.length)
-      console.log("[v0] First 3 matches:", data.matches?.slice(0, 3))
-
-      if (data.debug) {
-        setDebugInfo(data.debug)
-        console.log("[v0] Debug info:", data.debug)
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error || "對賬預覽失敗")
-      }
-
-      const matchesData = data.matches || []
-      console.log("[v0] Setting previewMatches:", matchesData.length)
-      setPreviewMatches(matchesData)
-      setPreviewLogId(data.logId)
-      setShowPreview(true)
-      setResult({
-        success: true,
-        message: data.message,
-        matched: matchesData.length,
-      })
-    } catch (error) {
-      console.error("[v0] Error:", error)
-      setResult({
-        success: false,
-        message: error instanceof Error ? error.message : "對賬預覽失敗",
-        matched: 0,
-      })
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  const handleConfirm = async () => {
-    if (!previewLogId) return
-
-    setIsProcessing(true)
-
-    try {
-      const res = await fetch("/api/reconciliation/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ logId: previewLogId }),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.error || "對賬確認失敗")
-      }
-
-      setResult({
-        success: true,
-        message: data.message,
-        matched: data.confirmed || 0,
-      })
-      setShowPreview(false)
-      setPreviewMatches([])
-      setPreviewLogId(null)
-      router.refresh()
-    } catch (error) {
-      setResult({
-        success: false,
-        message: error instanceof Error ? error.message : "對賬確認失敗",
-        matched: 0,
-      })
-    } finally {
-      setIsProcessing(false)
-      setShowConfirmDialog(false)
-    }
-  }
-
-  const canExecute = selectedRule && selectedBankBatches.length > 0 && selectedPlatformBatches.length > 0
-
-  const labels = {
-    ja: {
-      selectRule: "対帳ルールを選択",
-      ruleDesc: "銀行とプラットフォームのフィールドを比較するルール",
-      selectBankBatch: "銀行レポートを選択",
-      selectPlatformBatch: "プラットフォームレポートを選択",
-      executeReconciliation: "自動対帳を実行",
-      previewResults: "対帳結果プレビュー",
-      confirmResults: "結果を確認して送信",
-      confirmTitle: "対帳確認",
-      confirmDesc: "このマッチング結果を確認して、レポートを更新しますか？",
-      bankField: "銀行フィールド",
-      platformField: "プラットフォームフィールド",
-      selected: "選択済み",
-      records: "件",
-      matchedCount: "件の対帳が見つかりました",
-      confirmedCount: "件の対帳が完了しました",
-      index: "項次",
-      confirmationCode: "確認コード",
-      transactionCode: "取引コード",
-      transactionDate: "取引日",
-      amount: "金額",
-      logs: "対帳ログ",
-      logTime: "実行時間",
-      logRule: "ルール",
-      logMatched: "マッチ数",
-      logStatus: "ステータス",
-      pending: "保留中",
-      confirmed: "確認済み",
-      cancelled: "キャンセル",
-      noMatches: "マッチングなし",
-    },
-    "zh-TW": {
-      selectRule: "選擇對賬規則",
-      ruleDesc: "比對銀行和平台欄位的規則",
-      selectBankBatch: "選擇銀行報表",
-      selectPlatformBatch: "選擇平台報表",
-      executeReconciliation: "自動對賬實行",
-      previewResults: "對賬結果預覽",
-      confirmResults: "確認送出結果",
-      confirmTitle: "確認對賬",
-      confirmDesc: "確定要使用此配對結果更新報表嗎？",
-      bankField: "銀行欄位",
-      platformField: "平台欄位",
-      selected: "已選擇",
-      records: "筆",
-      matchedCount: "筆對賬配對",
-      confirmedCount: "筆對賬完成",
-      index: "項次",
-      confirmationCode: "確認碼",
-      transactionCode: "交易編號",
-      transactionDate: "取引日",
-      amount: "金額",
-      logs: "對賬日誌",
-      logTime: "執行時間",
-      logRule: "規則",
-      logMatched: "配對數",
-      logStatus: "狀態",
-      pending: "待確認",
-      confirmed: "已確認",
-      cancelled: "已取消",
-      noMatches: "無配對結果",
-    },
-    en: {
-      selectRule: "Select Reconciliation Rule",
-      ruleDesc: "Rules for comparing bank and platform fields",
-      selectBankBatch: "Select Bank Reports",
-      selectPlatformBatch: "Select Platform Reports",
-      executeReconciliation: "Execute Auto Reconciliation",
-      previewResults: "Reconciliation Preview",
-      confirmResults: "Confirm and Submit",
-      confirmTitle: "Confirm Reconciliation",
-      confirmDesc: "Are you sure you want to update reports with these matches?",
-      bankField: "Bank Field",
-      platformField: "Platform Field",
-      selected: "Selected",
-      records: "records",
-      matchedCount: "matches found",
-      confirmedCount: "matches completed",
-      index: "Index",
-      confirmationCode: "Confirmation Code",
-      transactionCode: "Transaction Code",
-      transactionDate: "Transaction Date",
-      amount: "Amount",
-      logs: "Reconciliation Logs",
-      logTime: "Time",
-      logRule: "Rule",
-      logMatched: "Matches",
-      logStatus: "Status",
-      pending: "Pending",
-      confirmed: "Confirmed",
-      cancelled: "Cancelled",
-      noMatches: "No matches",
-    },
-  }
-
-  const l = labels[language] || labels.ja
+  const totalPreviewPages = Math.ceil(previewMatches.length / previewPageSize)
+  const paginatedPreviewMatches = previewMatches.slice(
+    (previewPage - 1) * previewPageSize,
+    previewPage * previewPageSize,
+  )
 
   return (
     <div className="space-y-6">
-      {/* Step 1: Select Rule */}
+      {/* Rules Selection */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
-            {l.selectRule}
+            {t("reconciliation.rules")}
           </CardTitle>
-          <CardDescription>{l.ruleDesc}</CardDescription>
+          <CardDescription>{t("reconciliation.selectRule")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3">
+          <div className="space-y-2">
             {rules.map((rule) => (
-              <div
-                key={rule.id}
-                className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${
-                  selectedRule === rule.id ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-                }`}
-                onClick={() => setSelectedRule(rule.id)}
-              >
-                <div className="flex items-center gap-3">
-                  <Checkbox checked={selectedRule === rule.id} onCheckedChange={() => setSelectedRule(rule.id)} />
-                  <div>
-                    <p className="font-medium">{rule.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {l.bankField}: <code className="bg-muted px-1 rounded">{rule.bank_field}</code>
-                      {" ↔ "}
-                      {l.platformField}: <code className="bg-muted px-1 rounded">{rule.platform_field}</code>
-                    </p>
-                  </div>
-                </div>
-                {selectedRule === rule.id && (
-                  <Badge variant="secondary">
-                    <Check className="h-3 w-3 mr-1" />
-                    {l.selected}
-                  </Badge>
-                )}
+              <div key={rule.id} className="flex items-center space-x-2">
+                <Checkbox
+                  id={rule.id}
+                  checked={selectedRule === rule.id}
+                  onCheckedChange={() => setSelectedRule(selectedRule === rule.id ? null : rule.id)}
+                />
+                <label htmlFor={rule.id} className="text-sm font-medium cursor-pointer">
+                  {rule.name}
+                  <span className="ml-2 text-muted-foreground">
+                    ({rule.bank_field} ↔ {rule.platform_field})
+                  </span>
+                </label>
               </div>
             ))}
-            {rules.length === 0 && (
-              <p className="text-center text-muted-foreground py-4">
-                {language === "ja" ? "ルールがありません" : language === "zh-TW" ? "沒有規則" : "No rules available"}
-              </p>
-            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Step 2: Select Batches */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid md:grid-cols-2 gap-6">
         {/* Bank Batches */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5" />
-              {l.selectBankBatch}
+              {t("reconciliation.bankData")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            <div className="space-y-2 max-h-60 overflow-y-auto">
               {bankBatches.map((batch) => (
-                <div
-                  key={batch.id}
-                  className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                    selectedBankBatches.includes(batch.id) ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-                  }`}
-                  onClick={() => toggleBankBatch(batch.id)}
-                >
+                <div key={batch.id} className="flex items-center space-x-2 p-2 rounded hover:bg-muted">
                   <Checkbox
+                    id={`bank-${batch.id}`}
                     checked={selectedBankBatches.includes(batch.id)}
                     onCheckedChange={() => toggleBankBatch(batch.id)}
                   />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{batch.file_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {batch.bank_code} • {batch.records_count} {l.records}
-                      {batch.memo && ` • ${batch.memo}`}
-                    </p>
-                  </div>
+                  <label htmlFor={`bank-${batch.id}`} className="flex-1 cursor-pointer">
+                    <div className="font-medium text-sm">{batch.bank_code || batch.file_name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {batch.records_count} {t("common.records")}
+                    </div>
+                  </label>
                 </div>
               ))}
-              {bankBatches.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">
-                  {language === "ja"
-                    ? "銀行レポートがありません"
-                    : language === "zh-TW"
-                      ? "沒有銀行報表"
-                      : "No bank reports"}
-                </p>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -397,255 +233,227 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs 
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
-              {l.selectPlatformBatch}
+              {t("reconciliation.platformData")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            <div className="space-y-2 max-h-60 overflow-y-auto">
               {platformBatches.map((batch) => (
-                <div
-                  key={batch.id}
-                  className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                    selectedPlatformBatches.includes(batch.id) ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-                  }`}
-                  onClick={() => togglePlatformBatch(batch.id)}
-                >
+                <div key={batch.id} className="flex items-center space-x-2 p-2 rounded hover:bg-muted">
                   <Checkbox
+                    id={`platform-${batch.id}`}
                     checked={selectedPlatformBatches.includes(batch.id)}
                     onCheckedChange={() => togglePlatformBatch(batch.id)}
                   />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">
-                      {batch.platform_name} - {batch.property_name}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {batch.account_name} • {batch.file_name} • {batch.records_count} {l.records}
-                    </p>
-                  </div>
+                  <label htmlFor={`platform-${batch.id}`} className="flex-1 cursor-pointer">
+                    <div className="font-medium text-sm">
+                      {batch.platform_name} - {batch.property_name || batch.file_name}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {batch.records_count} {t("common.records")}
+                    </div>
+                  </label>
                 </div>
               ))}
-              {platformBatches.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">
-                  {language === "ja"
-                    ? "プラットフォームレポートがありません"
-                    : language === "zh-TW"
-                      ? "沒有平台報表"
-                      : "No platform reports"}
-                </p>
-              )}
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Execute Button */}
-      <div className="flex flex-col items-center gap-4">
-        {result && !showPreview && (
-          <div
-            className={`flex items-center gap-2 rounded-lg p-4 w-full max-w-md ${
-              result.success ? "bg-green-500/10 text-green-600" : "bg-destructive/10 text-destructive"
-            }`}
-          >
-            {result.success ? <Check className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
-            <span>{result.message}</span>
-          </div>
-        )}
-
-        <Button size="lg" onClick={handlePreview} disabled={!canExecute || isProcessing} className="min-w-[200px]">
-          {isProcessing ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
-          {l.executeReconciliation}
+      <div className="flex justify-center">
+        <Button
+          size="lg"
+          onClick={handlePreview}
+          disabled={
+            isProcessing || !selectedRule || selectedBankBatches.length === 0 || selectedPlatformBatches.length === 0
+          }
+        >
+          {isProcessing ? <RefreshCcw className="h-4 w-4 mr-2 animate-spin" /> : <Eye className="h-4 w-4 mr-2" />}
+          {t("reconciliation.execute")}
         </Button>
-
-        <p className="text-sm text-muted-foreground">
-          {selectedBankBatches.length > 0 && selectedPlatformBatches.length > 0 ? (
-            <>
-              {l.selected}: {selectedBankBatches.length}{" "}
-              {language === "ja" ? "銀行" : language === "zh-TW" ? "銀行" : "bank"}, {selectedPlatformBatches.length}{" "}
-              {language === "ja" ? "プラットフォーム" : language === "zh-TW" ? "平台" : "platform"}
-            </>
-          ) : language === "ja" ? (
-            "ルールとレポートを選択してください"
-          ) : language === "zh-TW" ? (
-            "請選擇規則和報表"
-          ) : (
-            "Please select a rule and reports"
-          )}
-        </p>
       </div>
 
-      {/* Preview Results */}
+      {/* Debug Info */}
+      {debugInfo && (
+        <Card className="border-amber-500">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-500" />
+              調試信息 Debug Info:
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs space-y-1">
+            <p>銀行交易數: {debugInfo.bankCount}</p>
+            <p>平台交易數: {debugInfo.platformCount}</p>
+            <p>銀行正數金額數: {debugInfo.positiveAmountCount}</p>
+            <p>Payout 數量: {debugInfo.payoutCount}</p>
+            <p className={debugInfo.intersectionCount > 0 ? "text-green-600 font-bold" : ""}>
+              金額交集數: {debugInfo.intersectionCount}
+            </p>
+            <p className={debugInfo.matchesCount > 0 ? "text-green-600 font-bold text-lg" : ""}>
+              配對結果數: {debugInfo.matchesCount}
+            </p>
+            {debugInfo.intersectionAmounts && debugInfo.intersectionAmounts.length > 0 && (
+              <div className="mt-2">
+                <p className="font-medium">交集金額 (前30筆):</p>
+                <p className="text-muted-foreground break-all">
+                  {debugInfo.intersectionAmounts.slice(0, 30).join(", ")}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {showPreview && (
-        <Card>
+        <Card className="border-2 border-green-500 bg-green-50 dark:bg-green-950">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5" />
-              {l.previewResults}
+            <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
+              <CheckCircle className="h-5 w-5" />
+              {t("reconciliation.previewTitle")}
+              <Badge variant="secondary" className="ml-2 text-lg px-3 py-1">
+                {previewMatches.length} 件
+              </Badge>
             </CardTitle>
             <CardDescription>
-              {previewMatches.length} {l.matchedCount}
+              {previewMatches.length > 0
+                ? `找到 ${previewMatches.length} 筆配對結果，請確認後送出`
+                : t("reconciliation.noMatches")}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {debugInfo && (
-              <div className="mb-4 p-4 bg-muted rounded-lg text-sm font-mono overflow-x-auto">
-                <p className="font-bold mb-2">調試信息 Debug Info:</p>
-                <p>銀行交易數: {debugInfo.bankCount}</p>
-                <p>平台交易數: {debugInfo.platformCount}</p>
-                <p>銀行正數金額數: {debugInfo.bankPositiveCount}</p>
-                <p>Payout 數量: {debugInfo.payoutCount}</p>
-                <p className="font-bold text-green-600">金額交集數: {debugInfo.intersectionCount ?? 0}</p>
-                <p>配對結果數: {debugInfo.matchesCount}</p>
-
-                {debugInfo.intersectionAmounts && debugInfo.intersectionAmounts.length > 0 && (
-                  <div className="mt-2 p-2 bg-green-100 rounded">
-                    <p className="font-bold text-green-700">交集金額 (前50筆):</p>
-                    <p className="text-xs">{debugInfo.intersectionAmounts.join(", ")}</p>
+            {previewMatches.length > 0 ? (
+              <>
+                {/* 分頁控制 - 頂部 */}
+                {totalPreviewPages > 1 && (
+                  <div className="flex items-center justify-between mb-4 p-2 bg-white dark:bg-gray-800 rounded">
+                    <span className="text-sm text-muted-foreground">
+                      顯示 {(previewPage - 1) * previewPageSize + 1} -{" "}
+                      {Math.min(previewPage * previewPageSize, previewMatches.length)} / {previewMatches.length} 筆
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPreviewPage((p) => Math.max(1, p - 1))}
+                        disabled={previewPage === 1}
+                      >
+                        上一頁
+                      </Button>
+                      <span className="px-3 py-1 text-sm">
+                        {previewPage} / {totalPreviewPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPreviewPage((p) => Math.min(totalPreviewPages, p + 1))}
+                        disabled={previewPage === totalPreviewPages}
+                      >
+                        下一頁
+                      </Button>
+                    </div>
                   </div>
                 )}
 
-                <div className="mt-3 space-y-2">
-                  <div>
-                    <p className="font-bold">銀行金額解析範例 (前20筆):</p>
-                    <div className="mt-1 text-xs bg-background p-2 rounded max-h-32 overflow-y-auto">
-                      {debugInfo.bankAmountExamples?.map((ex: string, i: number) => <div key={i}>{ex}</div>) ||
-                        "無資料"}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="font-bold">Payout 金額解析範例 (前20筆):</p>
-                    <div className="mt-1 text-xs bg-background p-2 rounded max-h-32 overflow-y-auto">
-                      {debugInfo.payoutAmountExamples?.map((ex: string, i: number) => <div key={i}>{ex}</div>) ||
-                        "無資料"}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="font-bold">所有銀行金額 (排序後前50):</p>
-                    <p className="text-xs">{debugInfo.allBankAmountsSorted?.join(", ") || "無資料"}</p>
-                  </div>
-
-                  <div>
-                    <p className="font-bold">所有 Payout 金額 (排序後前50):</p>
-                    <p className="text-xs">{debugInfo.allPayoutAmountsSorted?.join(", ") || "無資料"}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {previewMatches.length > 0 ? (
-              <>
-                <div className="border rounded-lg overflow-x-auto">
+                {/* 表格 */}
+                <div className="border rounded-lg overflow-hidden bg-white dark:bg-gray-900">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-16">{l.index}</TableHead>
-                        <TableHead>{l.confirmationCode}</TableHead>
-                        <TableHead>{l.transactionCode}</TableHead>
-                        <TableHead>{l.transactionDate}</TableHead>
-                        <TableHead className="text-right">{l.amount}</TableHead>
+                      <TableRow className="bg-gray-100 dark:bg-gray-800">
+                        <TableHead className="w-16">項次</TableHead>
+                        <TableHead>確認碼</TableHead>
+                        <TableHead>交易編碼</TableHead>
+                        <TableHead>取引日</TableHead>
+                        <TableHead className="text-right">金額</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {previewMatches.map((match) => (
-                        <TableRow key={match.index}>
-                          <TableCell className="font-medium">{match.index}</TableCell>
-                          <TableCell>
-                            <code className="bg-muted px-1 rounded text-sm">{match.confirmationCode}</code>
-                          </TableCell>
-                          <TableCell>
-                            <code className="bg-muted px-1 rounded text-sm">{match.transactionCode}</code>
-                          </TableCell>
+                      {paginatedPreviewMatches.map((match, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>{(previewPage - 1) * previewPageSize + idx + 1}</TableCell>
+                          <TableCell className="font-mono text-xs">{match.confirmationCode || "-"}</TableCell>
+                          <TableCell className="font-mono text-xs">{match.transactionCode || "-"}</TableCell>
                           <TableCell>{match.transactionDate}</TableCell>
-                          <TableCell className="text-right font-mono">{formatAmount(match.amount)}</TableCell>
+                          <TableCell className="text-right">¥{match.amount?.toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
-                <div className="flex justify-center gap-4 mt-6">
-                  <Button variant="outline" onClick={() => setShowPreview(false)}>
-                    {t("cancel")}
-                  </Button>
-                  <Button onClick={() => setShowConfirmDialog(true)} disabled={isProcessing}>
-                    {isProcessing ? (
-                      <RefreshCcw className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="mr-2 h-4 w-4" />
-                    )}
-                    {l.confirmResults}
+
+                {/* 確認按鈕 */}
+                <div className="flex justify-center mt-6">
+                  <Button
+                    size="lg"
+                    onClick={() => setShowConfirmDialog(true)}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <Check className="h-4 w-4 mr-2" />
+                    {t("reconciliation.confirmSubmit")} ({previewMatches.length} 件)
                   </Button>
                 </div>
               </>
             ) : (
-              <p className="text-center text-muted-foreground py-8">{l.noMatches}</p>
+              <div className="text-center py-8 text-muted-foreground">{t("reconciliation.noMatches")}</div>
             )}
           </CardContent>
         </Card>
       )}
 
       {/* Reconciliation Logs */}
-      {logs.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <History className="h-5 w-5" />
-              {l.logs}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="border rounded-lg overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{l.logTime}</TableHead>
-                    <TableHead>{l.logRule}</TableHead>
-                    <TableHead className="text-center">{l.logMatched}</TableHead>
-                    <TableHead className="text-center">{l.logStatus}</TableHead>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            {t("reconciliation.logs")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {logs.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("common.date")}</TableHead>
+                  <TableHead>{t("reconciliation.ruleName")}</TableHead>
+                  <TableHead>{t("reconciliation.matchCount")}</TableHead>
+                  <TableHead>{t("common.status")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell>{new Date(log.created_at).toLocaleString()}</TableCell>
+                    <TableCell>{log.rule_name}</TableCell>
+                    <TableCell>{log.matches_count}</TableCell>
+                    <TableCell>
+                      <Badge variant={log.status === "completed" ? "default" : "secondary"}>{log.status}</Badge>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell>{formatDate(log.created_at)}</TableCell>
-                      <TableCell>{log.rule_name}</TableCell>
-                      <TableCell className="text-center">{log.matched_count}</TableCell>
-                      <TableCell className="text-center">
-                        <Badge
-                          variant={
-                            log.status === "confirmed"
-                              ? "default"
-                              : log.status === "pending"
-                                ? "secondary"
-                                : "destructive"
-                          }
-                        >
-                          {log.status === "confirmed"
-                            ? l.confirmed
-                            : log.status === "pending"
-                              ? l.pending
-                              : l.cancelled}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-4 text-muted-foreground">{t("reconciliation.noLogs")}</div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Confirm Dialog */}
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{l.confirmTitle}</AlertDialogTitle>
-            <AlertDialogDescription>{l.confirmDesc}</AlertDialogDescription>
+            <AlertDialogTitle>{t("reconciliation.confirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("reconciliation.confirmDescription", { count: previewMatches.length })}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirm}>{t("confirm")}</AlertDialogAction>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirm} disabled={isProcessing}>
+              {isProcessing ? <RefreshCcw className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
+              {t("common.confirm")}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

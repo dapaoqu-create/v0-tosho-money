@@ -15,13 +15,29 @@ async function getBatchData(batchId: string) {
     return null
   }
 
-  const { data: transactions } = await supabase
-    .from("bank_transactions")
-    .select("*")
-    .eq("batch_id", batchId)
-    .order("transaction_date", { ascending: false })
+  // 使用分頁獲取所有資料
+  const allTransactions: any[] = []
+  let page = 0
+  const pageSize = 1000
 
-  return { batch, transactions: transactions || [] }
+  while (true) {
+    const { data: transactions, error } = await supabase
+      .from("bank_transactions")
+      .select("*")
+      .eq("batch_id", batchId)
+      .order("transaction_date", { ascending: false })
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+
+    if (error) break
+    if (!transactions || transactions.length === 0) break
+
+    allTransactions.push(...transactions)
+
+    if (transactions.length < pageSize) break
+    page++
+  }
+
+  return { batch, transactions: allTransactions }
 }
 
 export default async function BankBatchDetailPage({

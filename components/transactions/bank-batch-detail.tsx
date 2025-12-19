@@ -95,7 +95,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
 
   const csvHeaders =
     transactions.length > 0 && transactions[0].raw_data
-      ? Object.keys(transactions[0].raw_data).filter((h) => h !== "_headers")
+      ? Object.keys(transactions[0].raw_data).filter((h) => h !== "_headers" && h !== "_row_index")
       : []
 
   const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE)

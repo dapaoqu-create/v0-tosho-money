@@ -170,12 +170,12 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       try {
         const parsed = JSON.parse(transactions[0].raw_data._headers)
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed
+          return parsed.filter((h: string) => h !== "_row_index" && h !== "_headers")
         }
       } catch (e) {}
     }
     if (batch.csv_headers && Array.isArray(batch.csv_headers) && batch.csv_headers.length > 0) {
-      return batch.csv_headers
+      return batch.csv_headers.filter((h) => h !== "_row_index" && h !== "_headers")
     }
     return AIRBNB_CSV_HEADERS
   }

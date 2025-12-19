@@ -123,6 +123,10 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs 
 
       const data = await res.json()
 
+      console.log("[v0] API Response:", data)
+      console.log("[v0] Matches count:", data.matches?.length)
+      console.log("[v0] First 3 matches:", data.matches?.slice(0, 3))
+
       if (data.debug) {
         setDebugInfo(data.debug)
         console.log("[v0] Debug info:", data.debug)
@@ -132,15 +136,18 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs 
         throw new Error(data.error || "對賬預覽失敗")
       }
 
-      setPreviewMatches(data.matches || [])
+      const matchesData = data.matches || []
+      console.log("[v0] Setting previewMatches:", matchesData.length)
+      setPreviewMatches(matchesData)
       setPreviewLogId(data.logId)
       setShowPreview(true)
       setResult({
         success: true,
         message: data.message,
-        matched: data.matches?.length || 0,
+        matched: matchesData.length,
       })
     } catch (error) {
+      console.error("[v0] Error:", error)
       setResult({
         success: false,
         message: error instanceof Error ? error.message : "對賬預覽失敗",

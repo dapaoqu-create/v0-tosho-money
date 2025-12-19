@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import { Badge } from "@/components/ui/badge"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,7 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { ArrowLeft, Upload, Trash2, FileSpreadsheet, Check, AlertCircle } from "lucide-react"
+import { ArrowLeft, Upload, Trash2, FileSpreadsheet, Check, AlertCircle, Edit2 } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useLanguage } from "@/lib/i18n/context"
 
@@ -42,6 +43,8 @@ interface PlatformTransaction {
   payout_amount: number
   reconciled: boolean
   raw_data: Record<string, string> | null
+  reconciliation_status?: string
+  matched_bank_transaction_code?: string
 }
 
 interface PlatformBatch {
@@ -87,38 +90,76 @@ const AIRBNB_CSV_HEADERS = [
 
 export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetailProps) {
   const router = useRouter()
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showUpdateDialog, setShowUpdateDialog] = useState(false)
+  const [showManualDialog, setShowManualDialog] = useState(false)
+  const [selectedTxId, setSelectedTxId] = useState<string | null>(null)
+  const [manualTransactionCode, setManualTransactionCode] = useState("")
   const [updateMode, setUpdateMode] = useState<"merge" | "replace">("merge")
   const [file, setFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
 
+  const labels = {
+    ja: {
+      itemNo: "項次",
+      reconcileStatus: "対帳別",
+      transactionCode: "交易編碼",
+      reconciled: "対帳完成",
+      unreconciled: "未対帳",
+      manualReconcile: "手動対帳",
+      enterTransactionCode: "交易編碼を入力",
+      manualReconcileDesc: "手動で交易編碼を入力して対帳を完了します",
+    },
+    "zh-TW": {
+      itemNo: "項次",
+      reconcileStatus: "對賬別",
+      transactionCode: "交易編碼",
+      reconciled: "對賬完成",
+      unreconciled: "未對賬",
+      manualReconcile: "手動對賬",
+      enterTransactionCode: "輸入交易編碼",
+      manualReconcileDesc: "手動輸入交易編碼完成對賬",
+    },
+    en: {
+      itemNo: "No.",
+      reconcileStatus: "Status",
+      transactionCode: "Transaction Code",
+      reconciled: "Reconciled",
+      unreconciled: "Unreconciled",
+      manualReconcile: "Manual Reconcile",
+      enterTransactionCode: "Enter transaction code",
+      manualReconcileDesc: "Manually enter transaction code to complete reconciliation",
+    },
+  }
+
+  const l = labels[language] || labels.ja
+
   const getHeaders = (): string[] => {
-    // 嘗試從第一筆交易的 raw_data 獲取 _headers
     if (transactions.length > 0 && transactions[0].raw_data?._headers) {
       try {
         const parsed = JSON.parse(transactions[0].raw_data._headers)
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed
         }
-      } catch (e) {
-        // 解析失敗，繼續嘗試其他方式
-      }
+      } catch (e) {}
     }
-
-    // 嘗試使用 batch.csv_headers
     if (batch.csv_headers && Array.isArray(batch.csv_headers) && batch.csv_headers.length > 0) {
       return batch.csv_headers
     }
-
-    // 使用預設的 Airbnb 欄位順序
     return AIRBNB_CSV_HEADERS
   }
 
   const csvHeaders = getHeaders()
+
+  // 檢查該行是否有確認碼（對賬狀態只顯示在有確認碼的行）
+  const hasConfirmationCode = (tx: PlatformTransaction) => {
+    const confirmCode = tx.raw_data?.["確認碼"] || tx.confirmation_code
+    return confirmCode && confirmCode.trim() !== ""
+  }
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
@@ -191,6 +232,40 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
     }
   }
 
+  const handleManualReconcile = async () => {
+    if (!selectedTxId || !manualTransactionCode.trim()) return
+
+    setIsSaving(true)
+    try {
+      const res = await fetch("/api/reconciliation/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "platform",
+          transactionId: selectedTxId,
+          transactionCode: manualTransactionCode.trim(),
+        }),
+      })
+
+      if (res.ok) {
+        setShowManualDialog(false)
+        setManualTransactionCode("")
+        setSelectedTxId(null)
+        router.refresh()
+      }
+    } catch (error) {
+      console.error("Manual reconcile error:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const openManualDialog = (txId: string) => {
+    setSelectedTxId(txId)
+    setManualTransactionCode("")
+    setShowManualDialog(true)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -230,6 +305,9 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="sticky left-0 bg-background z-10 min-w-[60px]">{l.itemNo}</TableHead>
+                  <TableHead className="min-w-[100px]">{l.reconcileStatus}</TableHead>
+                  <TableHead className="min-w-[150px]">{l.transactionCode}</TableHead>
                   {csvHeaders.map((header) => (
                     <TableHead key={header} className="min-w-[100px]">
                       {header}
@@ -238,19 +316,88 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transactions.map((tx) => (
-                  <TableRow key={tx.id}>
-                    {csvHeaders.map((header) => (
-                      <TableCell key={header}>{tx.raw_data?.[header] ?? "-"}</TableCell>
-                    ))}
-                  </TableRow>
-                ))}
+                {transactions.map((tx, index) => {
+                  const showReconcileStatus = hasConfirmationCode(tx)
+                  return (
+                    <TableRow key={tx.id}>
+                      {/* 項次 */}
+                      <TableCell className="sticky left-0 bg-background z-10 font-medium">{index + 1}</TableCell>
+                      {/* 對賬別 - 只在有確認碼的行顯示 */}
+                      <TableCell>
+                        {showReconcileStatus ? (
+                          tx.reconciliation_status === "reconciled" ? (
+                            <Badge variant="default" className="bg-green-500">
+                              <Check className="h-3 w-3 mr-1" />
+                              {l.reconciled}
+                            </Badge>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">{l.unreconciled}</Badge>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => openManualDialog(tx.id)}
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      {/* 交易編碼 */}
+                      <TableCell>
+                        {tx.matched_bank_transaction_code ? (
+                          <Badge variant="secondary" className="font-mono text-xs">
+                            {tx.matched_bank_transaction_code}
+                          </Badge>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      {/* CSV 原始欄位 */}
+                      {csvHeaders.map((header) => (
+                        <TableCell key={header}>{tx.raw_data?.[header] ?? "-"}</TableCell>
+                      ))}
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
         </CardContent>
       </Card>
+
+      {/* Manual Reconcile Dialog */}
+      <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{l.manualReconcile}</DialogTitle>
+            <DialogDescription>{l.manualReconcileDesc}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>{l.transactionCode}</Label>
+              <Input
+                value={manualTransactionCode}
+                onChange={(e) => setManualTransactionCode(e.target.value)}
+                placeholder={l.enterTransactionCode}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowManualDialog(false)}>
+              {t("cancel")}
+            </Button>
+            <Button onClick={handleManualReconcile} disabled={!manualTransactionCode.trim() || isSaving}>
+              {isSaving ? t("loading") : t("confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Update Dialog */}
       <Dialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>

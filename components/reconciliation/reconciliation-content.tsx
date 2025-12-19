@@ -1,18 +1,38 @@
 "use client"
-
 import { DashboardHeader } from "@/components/dashboard-header"
-import { ReconciliationView } from "@/components/reconciliation/reconciliation-view"
+import { ReconciliationPanel } from "@/components/reconciliation/reconciliation-panel"
 
-interface ReconciliationContentProps {
-  platformPayouts: any[]
-  bankIncome: any[]
+interface ReconciliationRule {
+  id: string
+  name: string
+  bank_field: string
+  platform_field: string
 }
 
-export function ReconciliationContent({ platformPayouts, bankIncome }: ReconciliationContentProps) {
+interface ImportBatch {
+  id: string
+  file_name: string
+  source_type: string
+  platform_name?: string
+  account_name?: string
+  property_name?: string
+  bank_code?: string
+  memo?: string
+  records_count: number
+  created_at: string
+}
+
+interface ReconciliationContentProps {
+  rules: ReconciliationRule[]
+  bankBatches: ImportBatch[]
+  platformBatches: ImportBatch[]
+}
+
+export function ReconciliationContent({ rules, bankBatches, platformBatches }: ReconciliationContentProps) {
   return (
     <div className="space-y-6">
       <DashboardHeader titleKey="reconciliation.title" subtitleKey="reconciliation.subtitle" />
-      <ReconciliationView platformPayouts={platformPayouts} bankIncome={bankIncome} />
+      <ReconciliationPanel rules={rules} bankBatches={bankBatches} platformBatches={platformBatches} />
     </div>
   )
 }

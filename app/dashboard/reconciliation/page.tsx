@@ -4,28 +4,35 @@ import { ReconciliationContent } from "@/components/reconciliation/reconciliatio
 async function getReconciliationData() {
   const supabase = await createClient()
 
-  const { data: platformPayouts } = await supabase
-    .from("platform_transactions")
-    .select("*, platform:platforms(*)")
-    .eq("type", "Payout")
-    .eq("reconciled", false)
-    .order("transaction_date", { ascending: false })
+  // 獲取對賬規則
+  const { data: rules } = await supabase
+    .from("reconciliation_rules")
+    .select("*")
+    .order("created_at", { ascending: true })
 
-  const { data: bankIncome } = await supabase
-    .from("bank_transactions")
-    .select("*, bank:banks(*)")
-    .gt("amount", 0)
-    .eq("reconciled", false)
-    .order("transaction_date", { ascending: false })
+  // 獲取所有銀行批次
+  const { data: bankBatches } = await supabase
+    .from("csv_import_batches")
+    .select("*")
+    .eq("source_type", "bank")
+    .order("created_at", { ascending: false })
+
+  // 獲取所有平台批次
+  const { data: platformBatches } = await supabase
+    .from("csv_import_batches")
+    .select("*")
+    .eq("source_type", "platform")
+    .order("created_at", { ascending: false })
 
   return {
-    platformPayouts: platformPayouts || [],
-    bankIncome: bankIncome || [],
+    rules: rules || [],
+    bankBatches: bankBatches || [],
+    platformBatches: platformBatches || [],
   }
 }
 
 export default async function ReconciliationPage() {
-  const { platformPayouts, bankIncome } = await getReconciliationData()
+  const { rules, bankBatches, platformBatches } = await getReconciliationData()
 
-  return <ReconciliationContent platformPayouts={platformPayouts} bankIncome={bankIncome} />
+  return <ReconciliationContent rules={rules} bankBatches={bankBatches} platformBatches={platformBatches} />
 }

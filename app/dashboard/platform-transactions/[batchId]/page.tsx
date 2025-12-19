@@ -25,7 +25,7 @@ async function getBatchData(batchId: string) {
       .from("platform_transactions")
       .select("*")
       .eq("batch_id", batchId)
-      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: true })
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
     if (error) break
@@ -36,6 +36,12 @@ async function getBatchData(batchId: string) {
     if (transactions.length < pageSize) break
     page++
   }
+
+  allTransactions.sort((a, b) => {
+    const aIndex = a.raw_data?._row_index ?? 999999
+    const bIndex = b.raw_data?._row_index ?? 999999
+    return Number(aIndex) - Number(bIndex)
+  })
 
   return { batch, transactions: allTransactions }
 }

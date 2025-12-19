@@ -22,17 +22,27 @@ interface ImportBatch {
   created_at: string
 }
 
+interface ReconciliationLog {
+  id: string
+  rule_name: string
+  matched_count: number
+  status: string
+  created_at: string
+  confirmed_at?: string
+}
+
 interface ReconciliationContentProps {
   rules: ReconciliationRule[]
   bankBatches: ImportBatch[]
   platformBatches: ImportBatch[]
+  logs?: ReconciliationLog[]
 }
 
-export function ReconciliationContent({ rules, bankBatches, platformBatches }: ReconciliationContentProps) {
+export function ReconciliationContent({ rules, bankBatches, platformBatches, logs = [] }: ReconciliationContentProps) {
   return (
     <div className="space-y-6">
       <DashboardHeader titleKey="reconciliation.title" subtitleKey="reconciliation.subtitle" />
-      <ReconciliationPanel rules={rules} bankBatches={bankBatches} platformBatches={platformBatches} />
+      <ReconciliationPanel rules={rules} bankBatches={bankBatches} platformBatches={platformBatches} logs={logs} />
     </div>
   )
 }

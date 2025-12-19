@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { RefreshCcw, Play, Settings, FileText, Building2, Check, AlertCircle } from "lucide-react"
+import { RefreshCcw, Settings, FileText, Building2, Check, AlertCircle, Eye, History } from "lucide-react"
 import { useLanguage } from "@/lib/i18n/context"
 
 interface ReconciliationRule {
@@ -39,24 +40,55 @@ interface ImportBatch {
   created_at: string
 }
 
+interface ReconciliationMatch {
+  index: number
+  confirmationCode: string
+  transactionCode: string
+  transactionDate: string
+  amount: number
+  bankTransactionId: string
+  platformTransactionId: string
+}
+
+interface ReconciliationLog {
+  id: string
+  rule_name: string
+  matched_count: number
+  status: string
+  created_at: string
+  confirmed_at?: string
+}
+
 interface ReconciliationPanelProps {
   rules: ReconciliationRule[]
   bankBatches: ImportBatch[]
   platformBatches: ImportBatch[]
+  logs?: ReconciliationLog[]
 }
 
-export function ReconciliationPanel({ rules, bankBatches, platformBatches }: ReconciliationPanelProps) {
+export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs = [] }: ReconciliationPanelProps) {
   const router = useRouter()
   const { t, language } = useLanguage()
   const [selectedRule, setSelectedRule] = useState<string | null>(rules[0]?.id || null)
   const [selectedBankBatches, setSelectedBankBatches] = useState<string[]>([])
   const [selectedPlatformBatches, setSelectedPlatformBatches] = useState<string[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
+  const [previewMatches, setPreviewMatches] = useState<ReconciliationMatch[]>([])
+  const [previewLogId, setPreviewLogId] = useState<string | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string; matched: number } | null>(null)
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString(language === "ja" ? "ja-JP" : language === "zh-TW" ? "zh-TW" : "en-US")
+  }
+
+  const formatAmount = (amount: number) => {
+    return new Intl.NumberFormat(language === "ja" ? "ja-JP" : language === "zh-TW" ? "zh-TW" : "en-US", {
+      style: "currency",
+      currency: "JPY",
+      maximumFractionDigits: 0,
+    }).format(amount)
   }
 
   const toggleBankBatch = (id: string) => {
@@ -67,16 +99,17 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches }: Rec
     setSelectedPlatformBatches((prev) => (prev.includes(id) ? prev.filter((b) => b !== id) : [...prev, id]))
   }
 
-  const handleExecuteReconciliation = async () => {
+  const handlePreview = async () => {
     if (!selectedRule || selectedBankBatches.length === 0 || selectedPlatformBatches.length === 0) {
       return
     }
 
     setIsProcessing(true)
     setResult(null)
+    setPreviewMatches([])
 
     try {
-      const res = await fetch("/api/reconciliation/execute", {
+      const res = await fetch("/api/reconciliation/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -89,20 +122,59 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches }: Rec
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error || "對賬執行失敗")
+        throw new Error(data.error || "對賬預覽失敗")
+      }
+
+      setPreviewMatches(data.matches || [])
+      setPreviewLogId(data.logId)
+      setShowPreview(true)
+      setResult({
+        success: true,
+        message: data.message,
+        matched: data.matches?.length || 0,
+      })
+    } catch (error) {
+      setResult({
+        success: false,
+        message: error instanceof Error ? error.message : "對賬預覽失敗",
+        matched: 0,
+      })
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleConfirm = async () => {
+    if (!previewLogId) return
+
+    setIsProcessing(true)
+
+    try {
+      const res = await fetch("/api/reconciliation/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logId: previewLogId }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "對賬確認失敗")
       }
 
       setResult({
         success: true,
         message: data.message,
-        matched: data.matched || 0,
+        matched: data.confirmed || 0,
       })
-
+      setShowPreview(false)
+      setPreviewMatches([])
+      setPreviewLogId(null)
       router.refresh()
     } catch (error) {
       setResult({
         success: false,
-        message: error instanceof Error ? error.message : "對賬執行失敗",
+        message: error instanceof Error ? error.message : "對賬確認失敗",
         matched: 0,
       })
     } finally {
@@ -120,13 +192,30 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches }: Rec
       selectBankBatch: "銀行レポートを選択",
       selectPlatformBatch: "プラットフォームレポートを選択",
       executeReconciliation: "自動対帳を実行",
-      confirmTitle: "対帳実行の確認",
-      confirmDesc: "選択したルールとレポートで自動対帳を実行しますか？",
+      previewResults: "対帳結果プレビュー",
+      confirmResults: "結果を確認して送信",
+      confirmTitle: "対帳確認",
+      confirmDesc: "このマッチング結果を確認して、レポートを更新しますか？",
       bankField: "銀行フィールド",
       platformField: "プラットフォームフィールド",
       selected: "選択済み",
       records: "件",
-      matchedCount: "件の対帳が完了しました",
+      matchedCount: "件の対帳が見つかりました",
+      confirmedCount: "件の対帳が完了しました",
+      index: "項次",
+      confirmationCode: "確認コード",
+      transactionCode: "取引コード",
+      transactionDate: "取引日",
+      amount: "金額",
+      logs: "対帳ログ",
+      logTime: "実行時間",
+      logRule: "ルール",
+      logMatched: "マッチ数",
+      logStatus: "ステータス",
+      pending: "保留中",
+      confirmed: "確認済み",
+      cancelled: "キャンセル",
+      noMatches: "マッチングなし",
     },
     "zh-TW": {
       selectRule: "選擇對賬規則",
@@ -134,13 +223,30 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches }: Rec
       selectBankBatch: "選擇銀行報表",
       selectPlatformBatch: "選擇平台報表",
       executeReconciliation: "自動對賬實行",
-      confirmTitle: "確認執行對賬",
-      confirmDesc: "確定要使用選定的規則和報表執行自動對賬嗎？",
+      previewResults: "對賬結果預覽",
+      confirmResults: "確認送出結果",
+      confirmTitle: "確認對賬",
+      confirmDesc: "確定要使用此配對結果更新報表嗎？",
       bankField: "銀行欄位",
       platformField: "平台欄位",
       selected: "已選擇",
       records: "筆",
-      matchedCount: "筆對賬完成",
+      matchedCount: "筆對賬配對",
+      confirmedCount: "筆對賬完成",
+      index: "項次",
+      confirmationCode: "確認碼",
+      transactionCode: "交易編號",
+      transactionDate: "取引日",
+      amount: "金額",
+      logs: "對賬日誌",
+      logTime: "執行時間",
+      logRule: "規則",
+      logMatched: "配對數",
+      logStatus: "狀態",
+      pending: "待確認",
+      confirmed: "已確認",
+      cancelled: "已取消",
+      noMatches: "無配對結果",
     },
     en: {
       selectRule: "Select Reconciliation Rule",
@@ -148,13 +254,30 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches }: Rec
       selectBankBatch: "Select Bank Reports",
       selectPlatformBatch: "Select Platform Reports",
       executeReconciliation: "Execute Auto Reconciliation",
+      previewResults: "Reconciliation Preview",
+      confirmResults: "Confirm and Submit",
       confirmTitle: "Confirm Reconciliation",
-      confirmDesc: "Are you sure you want to execute auto reconciliation with the selected rule and reports?",
+      confirmDesc: "Are you sure you want to update reports with these matches?",
       bankField: "Bank Field",
       platformField: "Platform Field",
       selected: "Selected",
       records: "records",
-      matchedCount: "matches completed",
+      matchedCount: "matches found",
+      confirmedCount: "matches completed",
+      index: "Index",
+      confirmationCode: "Confirmation Code",
+      transactionCode: "Transaction Code",
+      transactionDate: "Transaction Date",
+      amount: "Amount",
+      logs: "Reconciliation Logs",
+      logTime: "Time",
+      logRule: "Rule",
+      logMatched: "Matches",
+      logStatus: "Status",
+      pending: "Pending",
+      confirmed: "Confirmed",
+      cancelled: "Cancelled",
+      noMatches: "No matches",
     },
   }
 
@@ -303,7 +426,7 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches }: Rec
 
       {/* Execute Button */}
       <div className="flex flex-col items-center gap-4">
-        {result && (
+        {result && !showPreview && (
           <div
             className={`flex items-center gap-2 rounded-lg p-4 w-full max-w-md ${
               result.success ? "bg-green-500/10 text-green-600" : "bg-destructive/10 text-destructive"
@@ -311,21 +434,11 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches }: Rec
           >
             {result.success ? <Check className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
             <span>{result.message}</span>
-            {result.success && result.matched > 0 && (
-              <Badge variant="secondary" className="ml-auto">
-                {result.matched} {l.matchedCount}
-              </Badge>
-            )}
           </div>
         )}
 
-        <Button
-          size="lg"
-          onClick={() => setShowConfirmDialog(true)}
-          disabled={!canExecute || isProcessing}
-          className="min-w-[200px]"
-        >
-          {isProcessing ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+        <Button size="lg" onClick={handlePreview} disabled={!canExecute || isProcessing} className="min-w-[200px]">
+          {isProcessing ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
           {l.executeReconciliation}
         </Button>
 
@@ -346,6 +459,122 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches }: Rec
         </p>
       </div>
 
+      {/* Preview Results */}
+      {showPreview && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              {l.previewResults}
+            </CardTitle>
+            <CardDescription>
+              {previewMatches.length} {l.matchedCount}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {previewMatches.length > 0 ? (
+              <>
+                <div className="border rounded-lg overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-16">{l.index}</TableHead>
+                        <TableHead>{l.confirmationCode}</TableHead>
+                        <TableHead>{l.transactionCode}</TableHead>
+                        <TableHead>{l.transactionDate}</TableHead>
+                        <TableHead className="text-right">{l.amount}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {previewMatches.map((match) => (
+                        <TableRow key={match.index}>
+                          <TableCell className="font-medium">{match.index}</TableCell>
+                          <TableCell>
+                            <code className="bg-muted px-1 rounded text-sm">{match.confirmationCode}</code>
+                          </TableCell>
+                          <TableCell>
+                            <code className="bg-muted px-1 rounded text-sm">{match.transactionCode}</code>
+                          </TableCell>
+                          <TableCell>{match.transactionDate}</TableCell>
+                          <TableCell className="text-right font-mono">{formatAmount(match.amount)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex justify-center gap-4 mt-6">
+                  <Button variant="outline" onClick={() => setShowPreview(false)}>
+                    {t("cancel")}
+                  </Button>
+                  <Button onClick={() => setShowConfirmDialog(true)} disabled={isProcessing}>
+                    {isProcessing ? (
+                      <RefreshCcw className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="mr-2 h-4 w-4" />
+                    )}
+                    {l.confirmResults}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-center text-muted-foreground py-8">{l.noMatches}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Reconciliation Logs */}
+      {logs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              {l.logs}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{l.logTime}</TableHead>
+                    <TableHead>{l.logRule}</TableHead>
+                    <TableHead className="text-center">{l.logMatched}</TableHead>
+                    <TableHead className="text-center">{l.logStatus}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {logs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell>{formatDate(log.created_at)}</TableCell>
+                      <TableCell>{log.rule_name}</TableCell>
+                      <TableCell className="text-center">{log.matched_count}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge
+                          variant={
+                            log.status === "confirmed"
+                              ? "default"
+                              : log.status === "pending"
+                                ? "secondary"
+                                : "destructive"
+                          }
+                        >
+                          {log.status === "confirmed"
+                            ? l.confirmed
+                            : log.status === "pending"
+                              ? l.pending
+                              : l.cancelled}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Confirm Dialog */}
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <AlertDialogContent>
@@ -355,7 +584,7 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches }: Rec
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleExecuteReconciliation}>{t("confirm")}</AlertDialogAction>
+            <AlertDialogAction onClick={handleConfirm}>{t("confirm")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

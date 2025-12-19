@@ -24,15 +24,22 @@ async function getReconciliationData() {
     .eq("source_type", "platform")
     .order("created_at", { ascending: false })
 
+  const { data: logs } = await supabase
+    .from("reconciliation_logs")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(20)
+
   return {
     rules: rules || [],
     bankBatches: bankBatches || [],
     platformBatches: platformBatches || [],
+    logs: logs || [],
   }
 }
 
 export default async function ReconciliationPage() {
-  const { rules, bankBatches, platformBatches } = await getReconciliationData()
+  const { rules, bankBatches, platformBatches, logs } = await getReconciliationData()
 
-  return <ReconciliationContent rules={rules} bankBatches={bankBatches} platformBatches={platformBatches} />
+  return <ReconciliationContent rules={rules} bankBatches={bankBatches} platformBatches={platformBatches} logs={logs} />
 }

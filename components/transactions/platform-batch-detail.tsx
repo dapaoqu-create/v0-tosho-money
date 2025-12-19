@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,7 +29,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { ArrowLeft, Upload, Trash2, FileSpreadsheet, Check, AlertCircle, Edit2 } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  ArrowLeft,
+  Upload,
+  Trash2,
+  FileSpreadsheet,
+  Check,
+  AlertCircle,
+  Edit2,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useLanguage } from "@/lib/i18n/context"
 
@@ -88,6 +99,8 @@ const AIRBNB_CSV_HEADERS = [
   "收入年份",
 ]
 
+const ITEMS_PER_PAGE = 200
+
 export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetailProps) {
   const router = useRouter()
   const { t, language } = useLanguage()
@@ -103,6 +116,8 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
   const [isSaving, setIsSaving] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
 
+  const [currentPage, setCurrentPage] = useState(1)
+
   const labels = {
     ja: {
       itemNo: "項次",
@@ -113,6 +128,10 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       manualReconcile: "手動対帳",
       enterTransactionCode: "交易編碼を入力",
       manualReconcileDesc: "手動で交易編碼を入力して対帳を完了します",
+      page: "ページ",
+      of: "/",
+      totalRecords: "件",
+      goToPage: "ページへ移動",
     },
     "zh-TW": {
       itemNo: "項次",
@@ -123,6 +142,10 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       manualReconcile: "手動對賬",
       enterTransactionCode: "輸入交易編碼",
       manualReconcileDesc: "手動輸入交易編碼完成對賬",
+      page: "頁",
+      of: "/",
+      totalRecords: "筆",
+      goToPage: "跳至頁面",
     },
     en: {
       itemNo: "No.",
@@ -133,6 +156,10 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       manualReconcile: "Manual Reconcile",
       enterTransactionCode: "Enter transaction code",
       manualReconcileDesc: "Manually enter transaction code to complete reconciliation",
+      page: "Page",
+      of: "of",
+      totalRecords: "records",
+      goToPage: "Go to page",
     },
   }
 
@@ -154,6 +181,12 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
   }
 
   const csvHeaders = getHeaders()
+
+  const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE)
+  const paginatedTransactions = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+    return transactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  }, [transactions, currentPage])
 
   // 檢查該行是否有確認碼（對賬狀態只顯示在有確認碼的行）
   const hasConfirmationCode = (tx: PlatformTransaction) => {
@@ -285,7 +318,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
               <CardDescription>
                 {t("platform.accountName")}: {batch.account_name} • {batch.file_name}
                 {" • "}
-                {transactions.length} {t("platform.records")}
+                {transactions.length} {l.totalRecords}
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -301,6 +334,44 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
           </div>
         </CardHeader>
         <CardContent>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-muted-foreground">
+                {l.page} {currentPage} {l.of} {totalPages} ({transactions.length} {l.totalRecords})
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Select value={String(currentPage)} onValueChange={(v) => setCurrentPage(Number(v))}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: totalPages }, (_, i) => (
+                      <SelectItem key={i + 1} value={String(i + 1)}>
+                        {l.page} {i + 1}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
           <ScrollArea className="w-full whitespace-nowrap rounded-md border">
             <Table>
               <TableHeader>
@@ -316,13 +387,12 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transactions.map((tx, index) => {
+                {paginatedTransactions.map((tx, index) => {
                   const showReconcileStatus = hasConfirmationCode(tx)
+                  const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1
                   return (
                     <TableRow key={tx.id}>
-                      {/* 項次 */}
-                      <TableCell className="sticky left-0 bg-background z-10 font-medium">{index + 1}</TableCell>
-                      {/* 對賬別 - 只在有確認碼的行顯示 */}
+                      <TableCell className="sticky left-0 bg-background z-10 font-medium">{globalIndex}</TableCell>
                       <TableCell>
                         {showReconcileStatus ? (
                           tx.reconciliation_status === "reconciled" ? (
@@ -347,7 +417,6 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                           "-"
                         )}
                       </TableCell>
-                      {/* 交易編碼 */}
                       <TableCell>
                         {tx.matched_bank_transaction_code ? (
                           <Badge variant="secondary" className="font-mono text-xs">
@@ -357,7 +426,6 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                           "-"
                         )}
                       </TableCell>
-                      {/* CSV 原始欄位 */}
                       {csvHeaders.map((header) => (
                         <TableCell key={header}>{tx.raw_data?.[header] ?? "-"}</TableCell>
                       ))}
@@ -368,6 +436,32 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
             </Table>
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-muted-foreground">
+                {l.page} {currentPage} {l.of} {totalPages}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

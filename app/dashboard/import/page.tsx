@@ -12,6 +12,12 @@ import { Upload, FileSpreadsheet, Check, AlertCircle } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useLanguage } from "@/lib/i18n/context"
 
+interface DebugInfo {
+  headers?: string[]
+  firstRows?: string[][]
+  rowCount?: number
+}
+
 export default function ImportPage() {
   const router = useRouter()
   const { t } = useLanguage()
@@ -20,6 +26,7 @@ export default function ImportPage() {
   const [platformFile, setPlatformFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string; count?: number } | null>(null)
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null)
 
   const [bankName, setBankName] = useState("")
   const [bankCode, setBankCode] = useState("")
@@ -34,6 +41,7 @@ export default function ImportPage() {
     if (selectedFile && selectedFile.name.endsWith(".csv")) {
       setBankFile(selectedFile)
       setResult(null)
+      setDebugInfo(null)
     }
   }, [])
 
@@ -42,6 +50,7 @@ export default function ImportPage() {
     if (selectedFile && selectedFile.name.endsWith(".csv")) {
       setPlatformFile(selectedFile)
       setResult(null)
+      setDebugInfo(null)
     }
   }, [])
 
@@ -54,6 +63,7 @@ export default function ImportPage() {
 
     setIsUploading(true)
     setResult(null)
+    setDebugInfo(null)
 
     try {
       const formData = new FormData()
@@ -71,6 +81,10 @@ export default function ImportPage() {
 
       const data = await res.json()
       console.log("[v0] Bank import response:", data)
+
+      if (data.debug) {
+        setDebugInfo(data.debug)
+      }
 
       if (!res.ok) {
         throw new Error(data.error || t("import.importError"))
@@ -109,6 +123,7 @@ export default function ImportPage() {
 
     setIsUploading(true)
     setResult(null)
+    setDebugInfo(null)
 
     try {
       const formData = new FormData()
@@ -126,6 +141,10 @@ export default function ImportPage() {
 
       const data = await res.json()
       console.log("[v0] Platform import response:", data)
+
+      if (data.debug) {
+        setDebugInfo(data.debug)
+      }
 
       if (!res.ok) {
         throw new Error(data.error || t("import.importError"))
@@ -158,6 +177,7 @@ export default function ImportPage() {
   const handleTabChange = (value: string) => {
     setActiveTab(value)
     setResult(null)
+    setDebugInfo(null)
   }
 
   return (
@@ -236,6 +256,29 @@ export default function ImportPage() {
                 </div>
               )}
 
+              {debugInfo && !result?.success && (
+                <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4 space-y-3">
+                  <p className="font-medium text-yellow-700">CSV 解析調試信息:</p>
+                  <div className="text-sm space-y-2">
+                    <p>
+                      <strong>行數:</strong> {debugInfo.rowCount}
+                    </p>
+                    <p>
+                      <strong>欄位名稱:</strong>
+                    </p>
+                    <pre className="bg-background/50 p-2 rounded text-xs overflow-x-auto">
+                      {JSON.stringify(debugInfo.headers, null, 2)}
+                    </pre>
+                    <p>
+                      <strong>前3行資料:</strong>
+                    </p>
+                    <pre className="bg-background/50 p-2 rounded text-xs overflow-x-auto max-h-40">
+                      {JSON.stringify(debugInfo.firstRows, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
               <Button
                 onClick={handleBankImport}
                 disabled={!bankFile || !bankName || !bankCode || isUploading}
@@ -310,6 +353,29 @@ export default function ImportPage() {
                 >
                   {result.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
                   {result.message}
+                </div>
+              )}
+
+              {debugInfo && !result?.success && (
+                <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4 space-y-3">
+                  <p className="font-medium text-yellow-700">CSV 解析調試信息:</p>
+                  <div className="text-sm space-y-2">
+                    <p>
+                      <strong>行數:</strong> {debugInfo.rowCount}
+                    </p>
+                    <p>
+                      <strong>欄位名稱:</strong>
+                    </p>
+                    <pre className="bg-background/50 p-2 rounded text-xs overflow-x-auto">
+                      {JSON.stringify(debugInfo.headers, null, 2)}
+                    </pre>
+                    <p>
+                      <strong>前3行資料:</strong>
+                    </p>
+                    <pre className="bg-background/50 p-2 rounded text-xs overflow-x-auto max-h-40">
+                      {JSON.stringify(debugInfo.firstRows, null, 2)}
+                    </pre>
+                  </div>
                 </div>
               )}
 

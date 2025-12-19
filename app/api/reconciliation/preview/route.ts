@@ -4,33 +4,44 @@ import { type NextRequest, NextResponse } from "next/server"
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
 
+  const debug: any = {}
+
   try {
     const { ruleId, bankBatchIds, platformBatchIds } = await request.json()
 
-    console.log("[v0] Reconciliation preview request:", { ruleId, bankBatchIds, platformBatchIds })
+    debug.request = { ruleId, bankBatchIds, platformBatchIds }
 
     // 查詢所有銀行交易
     const { data: bankTransactions, error: bankError } = await supabase.from("bank_transactions").select("*")
 
-    console.log("[v0] Bank transactions total:", bankTransactions?.length, "error:", bankError)
+    debug.bankCount = bankTransactions?.length || 0
+    debug.bankError = bankError?.message || null
 
     // 查詢所有平台交易
     const { data: platformTransactions, error: platformError } = await supabase
       .from("platform_transactions")
       .select("*")
 
-    console.log("[v0] Platform transactions total:", platformTransactions?.length, "error:", platformError)
+    debug.platformCount = platformTransactions?.length || 0
+    debug.platformError = platformError?.message || null
 
     if (!bankTransactions?.length || !platformTransactions?.length) {
       return NextResponse.json({
         success: true,
         matches: [],
         message: "沒有找到交易資料",
+        debug,
       })
     }
 
+    debug.sampleBankRawData = bankTransactions[0]?.raw_data
+    debug.sampleBankKeys = Object.keys(bankTransactions[0]?.raw_data || {})
+    debug.samplePlatformRawData = platformTransactions[0]?.raw_data
+    debug.samplePlatformKeys = Object.keys(platformTransactions[0]?.raw_data || {})
+
     // 建立 Payout 金額索引 (收款欄位)
     const payoutByAmount = new Map<number, any[]>()
+    const payoutAmounts: number[] = []
 
     for (const tx of platformTransactions) {
       const rawData = tx.raw_data || {}
@@ -44,6 +55,7 @@ export async function POST(request: NextRequest) {
         const amount = Math.abs(Number.parseInt(cleanAmount) || 0)
 
         if (amount > 0) {
+          payoutAmounts.push(amount)
           if (!payoutByAmount.has(amount)) {
             payoutByAmount.set(amount, [])
           }
@@ -52,7 +64,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log("[v0] Payout amounts found:", Array.from(payoutByAmount.keys()).slice(0, 20))
+    debug.payoutAmountsSample = payoutAmounts.slice(0, 20)
+    debug.payoutCount = payoutAmounts.length
 
     // 找出所有預訂的確認碼，按入帳日期分組
     const confirmationCodesByDate = new Map<string, string[]>()
@@ -74,6 +87,7 @@ export async function POST(request: NextRequest) {
     const matches: any[] = []
     let matchIndex = 1
     const usedPayoutIds = new Set<string>()
+    const bankAmounts: number[] = []
 
     for (const bankTx of bankTransactions) {
       const rawData = bankTx.raw_data || {}
@@ -88,13 +102,13 @@ export async function POST(request: NextRequest) {
         continue
       }
 
+      bankAmounts.push(bankAmount)
+
       // 已對賬的跳過
       if (bankTx.reconciliation_status === "reconciled") continue
 
       // 查找相同金額的 Payout
       const matchingPayouts = payoutByAmount.get(bankAmount) || []
-
-      console.log("[v0] Checking bank amount:", bankAmount, "found payouts:", matchingPayouts.length)
 
       for (const payoutTx of matchingPayouts) {
         if (usedPayoutIds.has(payoutTx.id)) continue
@@ -119,15 +133,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log("[v0] Total matches found:", matches.length)
+    debug.bankAmountsSample = bankAmounts.slice(0, 20)
+    debug.bankPositiveCount = bankAmounts.length
+    debug.matchesCount = matches.length
 
     return NextResponse.json({
       success: true,
       matches,
       message: `找到 ${matches.length} 筆配對`,
+      debug,
     })
   } catch (error) {
-    console.error("[v0] Reconciliation preview error:", error)
-    return NextResponse.json({ error: "對賬預覽失敗", details: String(error) }, { status: 500 })
+    debug.error = String(error)
+    return NextResponse.json({ error: "對賬預覽失敗", details: String(error), debug }, { status: 500 })
   }
 }

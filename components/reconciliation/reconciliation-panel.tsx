@@ -78,6 +78,7 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs 
   const [showPreview, setShowPreview] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string; matched: number } | null>(null)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString(language === "ja" ? "ja-JP" : language === "zh-TW" ? "zh-TW" : "en-US")
@@ -107,6 +108,7 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs 
     setIsProcessing(true)
     setResult(null)
     setPreviewMatches([])
+    setDebugInfo(null)
 
     try {
       const res = await fetch("/api/reconciliation/preview", {
@@ -120,6 +122,11 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs 
       })
 
       const data = await res.json()
+
+      if (data.debug) {
+        setDebugInfo(data.debug)
+        console.log("[v0] Debug info:", data.debug)
+      }
 
       if (!res.ok) {
         throw new Error(data.error || "對賬預覽失敗")
@@ -472,6 +479,53 @@ export function ReconciliationPanel({ rules, bankBatches, platformBatches, logs 
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {debugInfo && (
+              <div className="mb-4 p-4 bg-muted rounded-lg text-sm font-mono overflow-x-auto">
+                <p className="font-bold mb-2">調試信息 Debug Info:</p>
+                <p>銀行交易數: {debugInfo.bankCount}</p>
+                <p>平台交易數: {debugInfo.platformCount}</p>
+                <p>銀行正數金額數: {debugInfo.bankPositiveCount}</p>
+                <p>Payout 數量: {debugInfo.payoutCount}</p>
+                <p>配對結果數: {debugInfo.matchesCount}</p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-blue-600">查看銀行 raw_data 欄位</summary>
+                  <pre className="mt-1 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(debugInfo.sampleBankKeys, null, 2)}
+                  </pre>
+                </details>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-blue-600">查看平台 raw_data 欄位</summary>
+                  <pre className="mt-1 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(debugInfo.samplePlatformKeys, null, 2)}
+                  </pre>
+                </details>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-blue-600">銀行金額範例 (前20筆)</summary>
+                  <pre className="mt-1 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(debugInfo.bankAmountsSample, null, 2)}
+                  </pre>
+                </details>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-blue-600">Payout 金額範例 (前20筆)</summary>
+                  <pre className="mt-1 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(debugInfo.payoutAmountsSample, null, 2)}
+                  </pre>
+                </details>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-blue-600">銀行 raw_data 範例</summary>
+                  <pre className="mt-1 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(debugInfo.sampleBankRawData, null, 2)}
+                  </pre>
+                </details>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-blue-600">平台 raw_data 範例</summary>
+                  <pre className="mt-1 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(debugInfo.samplePlatformRawData, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            )}
+
             {previewMatches.length > 0 ? (
               <>
                 <div className="border rounded-lg overflow-x-auto">

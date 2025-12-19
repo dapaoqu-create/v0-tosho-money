@@ -36,20 +36,24 @@ function parseDate(dateStr: string): Date | null {
   // 清理字串
   const cleaned = dateStr.trim()
 
-  // 嘗試不同格式
-  // 格式1: 2024/12/14 或 2024-12-14
-  let match = cleaned.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+  let match = cleaned.match(/^(\d{4})(\d{2})(\d{2})$/)
   if (match) {
     return new Date(Number.parseInt(match[1]), Number.parseInt(match[2]) - 1, Number.parseInt(match[3]))
   }
 
-  // 格式2: 12/14/2025 或 12-14-2025 (月/日/年)
+  // 格式2: 2024/12/14 或 2024-12-14
+  match = cleaned.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+  if (match) {
+    return new Date(Number.parseInt(match[1]), Number.parseInt(match[2]) - 1, Number.parseInt(match[3]))
+  }
+
+  // 格式3: 12/14/2025 或 12-14-2025 (月/日/年)
   match = cleaned.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
   if (match) {
     return new Date(Number.parseInt(match[3]), Number.parseInt(match[1]) - 1, Number.parseInt(match[2]))
   }
 
-  // 格式3: 直接嘗試 Date.parse
+  // 格式4: 直接嘗試 Date.parse
   const parsed = Date.parse(cleaned)
   if (!isNaN(parsed)) {
     return new Date(parsed)
@@ -196,10 +200,19 @@ export async function POST(request: NextRequest) {
 
     debug.intersectionCount = intersection.length
     debug.intersectionAmounts = intersection.sort((a, b) => a - b).slice(0, 50)
-    debug.bankAmountExamples = bankList
-      .slice(0, 20)
-      .map((b) => `"${b.rawData["入出金(円)"]}" -> ${b.amount} (${b.date})`)
-    debug.payoutAmountExamples = payoutList.slice(0, 20).map((p) => `"${p.rawData["收款"]}" -> ${p.amount} (${p.date})`)
+
+    debug.bankAmountExamples = bankList.slice(0, 20).map((b) => {
+      const parsed = b.parsedDate
+        ? `${b.parsedDate.getFullYear()}/${b.parsedDate.getMonth() + 1}/${b.parsedDate.getDate()}`
+        : "null"
+      return `"${b.rawData["入出金(円)"]}" -> ${b.amount} (${b.date} => ${parsed})`
+    })
+    debug.payoutAmountExamples = payoutList.slice(0, 20).map((p) => {
+      const parsed = p.parsedDate
+        ? `${p.parsedDate.getFullYear()}/${p.parsedDate.getMonth() + 1}/${p.parsedDate.getDate()}`
+        : "null"
+      return `"${p.rawData["收款"]}" -> ${p.amount} (${p.date} => ${parsed})`
+    })
 
     const matches: any[] = []
     let matchIndex = 1

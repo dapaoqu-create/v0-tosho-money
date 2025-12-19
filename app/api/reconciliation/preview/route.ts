@@ -1,6 +1,15 @@
 import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
+function parseAmount(value: any): number {
+  if (value === null || value === undefined || value === "") return 0
+  // 轉為字串，移除逗號、空格，然後解析
+  const str = String(value).replace(/[,，\s]/g, "")
+  // 移除 .00 或其他小數部分（因為都是 .00）
+  const intPart = str.split(".")[0]
+  return Number.parseInt(intPart, 10) || 0
+}
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
 
@@ -53,39 +62,61 @@ export async function POST(request: NextRequest) {
     const bankField = rule.bank_field // 例如: "入出金(円)"
     const platformField = rule.platform_field // 例如: "收款"
 
+    console.log("[v0] === Bank Transactions Analysis ===")
+    const bankAmounts: number[] = []
+    bankTransactions.forEach((tx, i) => {
+      const rawData = tx.raw_data || {}
+      const amountValue = rawData[bankField]
+      const amount = parseAmount(amountValue)
+      bankAmounts.push(amount)
+      if (i < 10) {
+        console.log(`[v0] Bank[${i}]: field="${bankField}", value="${amountValue}", parsed=${amount}`)
+      }
+    })
+
+    console.log("[v0] === Platform Transactions Analysis ===")
+    const platformAmounts: number[] = []
+    platformTransactions.forEach((tx, i) => {
+      const rawData = tx.raw_data || {}
+      const type = rawData["類型"] || ""
+      const amountValue = rawData[platformField]
+      const amount = parseAmount(amountValue)
+      if (type === "Payout") {
+        platformAmounts.push(amount)
+      }
+      if (i < 10) {
+        console.log(
+          `[v0] Platform[${i}]: type="${type}", field="${platformField}", value="${amountValue}", parsed=${amount}`,
+        )
+      }
+    })
+
+    console.log("[v0] Bank amounts (first 10):", bankAmounts.slice(0, 10))
+    console.log("[v0] Platform Payout amounts:", platformAmounts)
+
     const incomeTransactions = bankTransactions.filter((tx) => {
       const rawData = tx.raw_data || {}
-      const amountStr = rawData[bankField] || String(tx.amount) || "0"
-      const amount = Number.parseFloat(String(amountStr).replace(/[,，]/g, "")) || 0
-      const isIncome = amount > 0
+      const amount = parseAmount(rawData[bankField])
       const notReconciled = !tx.reconciliation_status || tx.reconciliation_status === "unreconciled"
-      return isIncome && notReconciled
+      return amount > 0 && notReconciled
     })
 
     console.log("[v0] Income transactions (positive amount, not reconciled):", incomeTransactions.length)
-    if (incomeTransactions.length > 0) {
-      const sample = incomeTransactions[0]
-      console.log("[v0] Sample bank tx raw_data:", JSON.stringify(sample.raw_data))
-    }
 
     const payoutTransactions = platformTransactions.filter((tx) => {
       const rawData = tx.raw_data || {}
       const type = rawData["類型"] || tx.type || ""
       const notReconciled = !tx.reconciliation_status || tx.reconciliation_status === "unreconciled"
-      return (type === "Payout" || type === "payout") && notReconciled
+      return type === "Payout" && notReconciled
     })
 
     console.log("[v0] Payout transactions:", payoutTransactions.length)
-    if (payoutTransactions.length > 0) {
-      const sample = payoutTransactions[0]
-      console.log("[v0] Sample payout tx raw_data:", JSON.stringify(sample.raw_data))
-    }
 
     // 獲取所有預訂類型的交易（用於獲取確認碼）
     const bookingTransactions = platformTransactions.filter((tx) => {
       const rawData = tx.raw_data || {}
       const type = rawData["類型"] || tx.type || ""
-      return type === "預訂" || type === "Reservation" || type === "booking"
+      return type === "預訂" || type === "Reservation"
     })
 
     console.log("[v0] Booking transactions (for confirmation codes):", bookingTransactions.length)
@@ -102,28 +133,23 @@ export async function POST(request: NextRequest) {
     }> = []
 
     let matchIndex = 1
+    const usedPayoutIds = new Set<string>()
 
-    // 對每筆銀行入金交易進行配對
     for (const bankTx of incomeTransactions) {
       const bankRawData = bankTx.raw_data || {}
-      const bankAmountStr = bankRawData[bankField] || String(bankTx.amount) || "0"
-      const bankAmount = Number.parseFloat(String(bankAmountStr).replace(/[,，]/g, "")) || 0
+      const bankAmount = parseAmount(bankRawData[bankField])
       const bankDate = bankRawData["取引日"] || bankTx.transaction_date || ""
+
+      console.log(`[v0] Looking for match: bankAmount=${bankAmount}, date=${bankDate}`)
 
       // 找金額匹配的 Payout 交易
       for (const payoutTx of payoutTransactions) {
-        if ((payoutTx as any)._matched) continue
+        if (usedPayoutIds.has(payoutTx.id)) continue
 
         const payoutRawData = payoutTx.raw_data || {}
-        const payoutAmountStr = payoutRawData[platformField] || String(payoutTx.payout_amount) || "0"
-        const payoutAmount = Math.round(Number.parseFloat(String(payoutAmountStr).replace(/[,，]/g, "")) || 0)
+        const payoutAmount = parseAmount(payoutRawData[platformField])
 
-        if (matchIndex <= 3) {
-          console.log(`[v0] Comparing bank ${bankAmount} vs payout ${payoutAmount}`)
-        }
-
-        // 金額完全一致（取整數比對）
-        if (Math.abs(bankAmount - payoutAmount) < 1 && payoutAmount > 0) {
+        if (bankAmount === payoutAmount && payoutAmount > 0) {
           // 找對應的預訂（通常是 Payout 同日期的預訂）
           const payoutDate = payoutRawData["日期"] || payoutTx.transaction_date || ""
 
@@ -159,7 +185,7 @@ export async function POST(request: NextRequest) {
           })
 
           // 標記為已配對
-          ;(payoutTx as any)._matched = true
+          usedPayoutIds.add(payoutTx.id)
           break
         }
       }
@@ -193,6 +219,8 @@ export async function POST(request: NextRequest) {
         incomeCount: incomeTransactions.length,
         payoutCount: payoutTransactions.length,
         bookingCount: bookingTransactions.length,
+        bankAmountsSample: bankAmounts.slice(0, 5),
+        platformAmountsSample: platformAmounts.slice(0, 5),
       },
     })
   } catch (error) {

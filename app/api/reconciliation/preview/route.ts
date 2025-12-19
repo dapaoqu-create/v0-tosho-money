@@ -93,11 +93,9 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 根據用戶說明：Payout 行的確認碼在同一天的預訂行中
-    const payoutList: any[] = []
-    const bookingsByDate = new Map<string, any[]>()
+    // 步驟1: 收集所有預訂（有確認碼的行），按日期和 id 排序
+    const allBookings: any[] = []
 
-    // 先收集所有預訂（有確認碼的行）
     for (const tx of platformTransactions) {
       const rawData = tx.raw_data || {}
       const txType = String(rawData["類型"] || "").trim()
@@ -105,18 +103,18 @@ export async function POST(request: NextRequest) {
       const txDate = String(rawData["日期"] || "").trim()
 
       if ((txType === "預訂" || txType === "Reservation") && confirmCode) {
-        if (!bookingsByDate.has(txDate)) {
-          bookingsByDate.set(txDate, [])
-        }
-        bookingsByDate.get(txDate)!.push({
+        allBookings.push({
           id: tx.id,
           confirmationCode: confirmCode,
           date: txDate,
+          used: false, // 標記是否已被配對
         })
       }
     }
 
-    // 收集所有 Payout，並找到對應的確認碼
+    // 步驟2: 收集所有 Payout，按日期排序
+    const payoutList: any[] = []
+
     for (const tx of platformTransactions) {
       const rawData = tx.raw_data || {}
       const txType = String(rawData["類型"] || "").trim()
@@ -129,23 +127,33 @@ export async function POST(request: NextRequest) {
         const parsedDate = parseDate(txDate)
 
         if (amount > 0) {
-          const sameDayBookings = bookingsByDate.get(txDate) || []
-          const confirmationCodes = sameDayBookings.map((b) => b.confirmationCode)
-          const bookingIds = sameDayBookings.map((b) => b.id)
-
           payoutList.push({
             id: tx.id,
             amount,
             date: txDate,
             parsedDate,
-            confirmationCodes,
-            bookingIds,
             rawData,
+            confirmationCode: null, // 稍後配對
+            bookingId: null,
           })
         }
       }
     }
 
+    // 步驟3: 為每個 Payout 配對一個確認碼（一對一）
+    // 規則：找同一天、尚未被使用的第一個預訂
+    for (const payout of payoutList) {
+      // 找同一天且尚未被使用的預訂
+      const sameDayBooking = allBookings.find((b) => b.date === payout.date && !b.used)
+
+      if (sameDayBooking) {
+        payout.confirmationCode = sameDayBooking.confirmationCode
+        payout.bookingId = sameDayBooking.id
+        sameDayBooking.used = true // 標記為已使用
+      }
+    }
+
+    // 步驟4: 收集銀行入金交易
     const bankList: any[] = []
 
     for (const bankTx of bankTransactions) {
@@ -171,7 +179,10 @@ export async function POST(request: NextRequest) {
 
     debug.bankPositiveCount = bankList.length
     debug.payoutCount = payoutList.length
+    debug.bookingsCount = allBookings.length
+    debug.payoutsWithConfirmCode = payoutList.filter((p) => p.confirmationCode).length
 
+    // 按金額分組
     const payoutByAmount = new Map<number, any[]>()
     for (const payout of payoutList) {
       if (!payoutByAmount.has(payout.amount)) {
@@ -211,9 +222,10 @@ export async function POST(request: NextRequest) {
       const parsed = p.parsedDate
         ? `${p.parsedDate.getFullYear()}/${p.parsedDate.getMonth() + 1}/${p.parsedDate.getDate()}`
         : "null"
-      return `"${p.rawData["收款"]}" -> ${p.amount} (${p.date} => ${parsed})`
+      return `"${p.rawData["收款"]}" -> ${p.amount} (${p.date} => ${parsed}) [確認碼: ${p.confirmationCode || "無"}]`
     })
 
+    // 步驟5: 配對銀行和 Payout
     const matches: any[] = []
     let matchIndex = 1
     const usedPayoutIds = new Set<string>()
@@ -223,7 +235,7 @@ export async function POST(request: NextRequest) {
       const bankTxList = bankByAmount.get(amount) || []
       const payoutTxList = payoutByAmount.get(amount) || []
 
-      // 對於每個銀行交易，找到日期最接近的 Payout
+      // 對於每個銀行交易，找到日期最接近的 Payout（7天內）
       for (const bankTx of bankTxList) {
         if (usedBankIds.has(bankTx.id)) continue
 
@@ -244,7 +256,7 @@ export async function POST(request: NextRequest) {
         if (bestMatch) {
           matches.push({
             index: matchIndex++,
-            confirmationCode: bestMatch.confirmationCodes.length > 0 ? bestMatch.confirmationCodes.join(", ") : "-",
+            confirmationCode: bestMatch.confirmationCode || "-",
             transactionCode: bankTx.transactionCode || "-",
             transactionDate: bankTx.date,
             payoutDate: bestMatch.date,
@@ -252,7 +264,7 @@ export async function POST(request: NextRequest) {
             daysDiff: bestDaysDiff,
             bankTransactionId: bankTx.id,
             platformTransactionId: bestMatch.id,
-            platformBookingIds: bestMatch.bookingIds,
+            platformBookingId: bestMatch.bookingId,
           })
 
           usedPayoutIds.add(bestMatch.id)

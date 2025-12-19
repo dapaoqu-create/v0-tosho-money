@@ -1,64 +1,65 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
-async function decodeCSVContent(file: File): Promise<string> {
+async function decodeBankCSV(file: File): Promise<string> {
   const buffer = await file.arrayBuffer()
   const uint8Array = new Uint8Array(buffer)
 
+  // 檢查 UTF-8 BOM
   let dataToProcess = uint8Array
   if (uint8Array[0] === 0xef && uint8Array[1] === 0xbb && uint8Array[2] === 0xbf) {
-    console.log("[v0] Detected UTF-8 BOM, removing it")
     dataToProcess = uint8Array.slice(3)
   }
 
-  // 嘗試用 UTF-8 解碼
-  const utf8Content = new TextDecoder("utf-8").decode(dataToProcess)
-
-  const cleanedUtf8 = utf8Content.replace(/^\uFEFF/, "")
-
-  // 檢查是否有亂碼（常見的 Shift-JIS 轉 UTF-8 亂碼特徵）
-  const hasMojibake =
-    cleanedUtf8.includes("") ||
-    (cleanedUtf8.includes("取引") === false &&
-      cleanedUtf8.includes("日期") === false &&
-      cleanedUtf8.includes("類型") === false &&
-      cleanedUtf8.includes("Date") === false &&
-      cleanedUtf8.includes("Type") === false &&
-      file.name.toLowerCase().includes(".csv"))
-
-  // 如果有亂碼跡象，嘗試用 Shift-JIS 解碼
-  if (hasMojibake) {
-    try {
-      const shiftJISContent = new TextDecoder("shift-jis").decode(dataToProcess)
-      // 驗證 Shift-JIS 解碼是否成功（應該包含日文字符）
-      if (
-        shiftJISContent.includes("取引") ||
-        shiftJISContent.includes("日付") ||
-        shiftJISContent.includes("残高") ||
-        shiftJISContent.includes("入出金") ||
-        /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(shiftJISContent)
-      ) {
-        console.log("[v0] Detected Shift-JIS encoding, converted successfully")
-        return shiftJISContent
-      }
-    } catch (e) {
-      console.log("[v0] Shift-JIS decode failed, using UTF-8")
+  // 銀行 CSV 優先嘗試 Shift-JIS（日本銀行常用）
+  try {
+    const shiftJISContent = new TextDecoder("shift-jis").decode(dataToProcess)
+    // 驗證是否包含日文銀行關鍵字
+    if (
+      shiftJISContent.includes("取引") ||
+      shiftJISContent.includes("日付") ||
+      shiftJISContent.includes("残高") ||
+      shiftJISContent.includes("入出金")
+    ) {
+      console.log("[v0] Bank CSV: Detected Shift-JIS encoding")
+      return shiftJISContent
     }
+  } catch (e) {
+    console.log("[v0] Shift-JIS decode failed")
   }
 
-  // 也嘗試 EUC-JP
+  // 嘗試 EUC-JP
   try {
     const eucContent = new TextDecoder("euc-jp").decode(dataToProcess)
     if (eucContent.includes("取引") || eucContent.includes("日付")) {
-      console.log("[v0] Detected EUC-JP encoding")
+      console.log("[v0] Bank CSV: Detected EUC-JP encoding")
       return eucContent
     }
   } catch (e) {
     // 忽略
   }
 
-  console.log("[v0] Using UTF-8 encoding")
-  return cleanedUtf8
+  // 預設使用 UTF-8
+  const utf8Content = new TextDecoder("utf-8").decode(dataToProcess)
+  console.log("[v0] Bank CSV: Using UTF-8 encoding")
+  return utf8Content.replace(/^\uFEFF/, "")
+}
+
+async function decodePlatformCSV(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer()
+  const uint8Array = new Uint8Array(buffer)
+
+  // 檢查 UTF-8 BOM
+  let dataToProcess = uint8Array
+  if (uint8Array[0] === 0xef && uint8Array[1] === 0xbb && uint8Array[2] === 0xbf) {
+    console.log("[v0] Platform CSV: Detected UTF-8 BOM, removing it")
+    dataToProcess = uint8Array.slice(3)
+  }
+
+  // 平台 CSV（Airbnb 等）直接使用 UTF-8
+  const utf8Content = new TextDecoder("utf-8").decode(dataToProcess)
+  console.log("[v0] Platform CSV: Using UTF-8 encoding")
+  return utf8Content.replace(/^\uFEFF/, "")
 }
 
 function parseCSV(content: string): { headers: string[]; rows: string[][] } {
@@ -176,7 +177,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "ファイルが必要です" }, { status: 400 })
     }
 
-    const content = await decodeCSVContent(file)
+    const content = type === "bank" ? await decodeBankCSV(file) : await decodePlatformCSV(file)
     const { headers, rows } = parseCSV(content)
 
     const debugInfo = {

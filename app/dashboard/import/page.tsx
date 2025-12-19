@@ -16,7 +16,8 @@ export default function ImportPage() {
   const router = useRouter()
   const { t } = useLanguage()
   const [activeTab, setActiveTab] = useState("bank")
-  const [file, setFile] = useState<File | null>(null)
+  const [bankFile, setBankFile] = useState<File | null>(null)
+  const [platformFile, setPlatformFile] = useState<File | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string; count?: number } | null>(null)
 
@@ -28,34 +29,48 @@ export default function ImportPage() {
   const [accountName, setAccountName] = useState("")
   const [propertyName, setPropertyName] = useState("")
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBankFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (selectedFile && selectedFile.name.endsWith(".csv")) {
-      setFile(selectedFile)
+      setBankFile(selectedFile)
+      setResult(null)
+    }
+  }, [])
+
+  const handlePlatformFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+    if (selectedFile && selectedFile.name.endsWith(".csv")) {
+      setPlatformFile(selectedFile)
       setResult(null)
     }
   }, [])
 
   const handleBankImport = async () => {
-    if (!file || !bankName || !bankCode) return
+    console.log("[v0] handleBankImport called", { bankFile, bankName, bankCode })
+    if (!bankFile || !bankName || !bankCode) {
+      console.log("[v0] Missing required fields for bank import")
+      return
+    }
 
     setIsUploading(true)
     setResult(null)
 
     try {
       const formData = new FormData()
-      formData.append("file", file)
+      formData.append("file", bankFile)
       formData.append("type", "bank")
       formData.append("bankName", bankName)
       formData.append("bankCode", bankCode)
       formData.append("memo", bankMemo)
 
+      console.log("[v0] Sending bank import request")
       const res = await fetch("/api/import", {
         method: "POST",
         body: formData,
       })
 
       const data = await res.json()
+      console.log("[v0] Bank import response:", data)
 
       if (!res.ok) {
         throw new Error(data.error || t("import.importError"))
@@ -67,12 +82,15 @@ export default function ImportPage() {
         count: data.count,
       })
 
-      setFile(null)
+      setBankFile(null)
       setBankName("")
       setBankCode("")
       setBankMemo("")
+      const fileInput = document.getElementById("bankFile") as HTMLInputElement
+      if (fileInput) fileInput.value = ""
       router.refresh()
     } catch (error) {
+      console.error("[v0] Bank import error:", error)
       setResult({
         success: false,
         message: error instanceof Error ? error.message : t("errorOccurred"),
@@ -83,25 +101,31 @@ export default function ImportPage() {
   }
 
   const handlePlatformImport = async () => {
-    if (!file || !platformName || !accountName || !propertyName) return
+    console.log("[v0] handlePlatformImport called", { platformFile, platformName, accountName, propertyName })
+    if (!platformFile || !platformName || !accountName || !propertyName) {
+      console.log("[v0] Missing required fields for platform import")
+      return
+    }
 
     setIsUploading(true)
     setResult(null)
 
     try {
       const formData = new FormData()
-      formData.append("file", file)
+      formData.append("file", platformFile)
       formData.append("type", "platform")
       formData.append("platformName", platformName)
       formData.append("accountName", accountName)
       formData.append("propertyName", propertyName)
 
+      console.log("[v0] Sending platform import request")
       const res = await fetch("/api/import", {
         method: "POST",
         body: formData,
       })
 
       const data = await res.json()
+      console.log("[v0] Platform import response:", data)
 
       if (!res.ok) {
         throw new Error(data.error || t("import.importError"))
@@ -113,12 +137,15 @@ export default function ImportPage() {
         count: data.count,
       })
 
-      setFile(null)
+      setPlatformFile(null)
       setPlatformName("")
       setAccountName("")
       setPropertyName("")
+      const fileInput = document.getElementById("platformFile") as HTMLInputElement
+      if (fileInput) fileInput.value = ""
       router.refresh()
     } catch (error) {
+      console.error("[v0] Platform import error:", error)
       setResult({
         success: false,
         message: error instanceof Error ? error.message : t("errorOccurred"),
@@ -128,11 +155,16 @@ export default function ImportPage() {
     }
   }
 
+  const handleTabChange = (value: string) => {
+    setActiveTab(value)
+    setResult(null)
+  }
+
   return (
     <div className="space-y-6">
       <DashboardHeader titleKey="import.title" subtitleKey="import.subtitle" />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="bank">{t("import.bankTab")}</TabsTrigger>
           <TabsTrigger value="platform">{t("import.platformTab")}</TabsTrigger>
@@ -183,14 +215,14 @@ export default function ImportPage() {
                     id="bankFile"
                     type="file"
                     accept=".csv"
-                    onChange={handleFileChange}
+                    onChange={handleBankFileChange}
                     className="cursor-pointer"
                   />
                 </div>
-                {file && (
+                {bankFile && (
                   <p className="text-sm text-muted-foreground flex items-center gap-2">
                     <FileSpreadsheet className="h-4 w-4" />
-                    {file.name}
+                    {bankFile.name}
                   </p>
                 )}
               </div>
@@ -206,7 +238,7 @@ export default function ImportPage() {
 
               <Button
                 onClick={handleBankImport}
-                disabled={!file || !bankName || !bankCode || isUploading}
+                disabled={!bankFile || !bankName || !bankCode || isUploading}
                 className="w-full"
               >
                 <Upload className="mr-2 h-4 w-4" />
@@ -260,14 +292,14 @@ export default function ImportPage() {
                     id="platformFile"
                     type="file"
                     accept=".csv"
-                    onChange={handleFileChange}
+                    onChange={handlePlatformFileChange}
                     className="cursor-pointer"
                   />
                 </div>
-                {file && (
+                {platformFile && (
                   <p className="text-sm text-muted-foreground flex items-center gap-2">
                     <FileSpreadsheet className="h-4 w-4" />
-                    {file.name}
+                    {platformFile.name}
                   </p>
                 )}
               </div>
@@ -283,7 +315,7 @@ export default function ImportPage() {
 
               <Button
                 onClick={handlePlatformImport}
-                disabled={!file || !platformName || !accountName || !propertyName || isUploading}
+                disabled={!platformFile || !platformName || !accountName || !propertyName || isUploading}
                 className="w-full"
               >
                 <Upload className="mr-2 h-4 w-4" />

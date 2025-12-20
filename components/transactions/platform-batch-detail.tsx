@@ -132,6 +132,8 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       of: "/",
       totalRecords: "件",
       goToPage: "ページへ移動",
+      confirmationCodes: "確認碼",
+      payouts: "Payout",
     },
     "zh-TW": {
       itemNo: "項次",
@@ -146,6 +148,8 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       of: "/",
       totalRecords: "筆",
       goToPage: "跳至頁面",
+      confirmationCodes: "確認碼",
+      payouts: "Payout",
     },
     en: {
       itemNo: "No.",
@@ -160,6 +164,8 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       of: "of",
       totalRecords: "records",
       goToPage: "Go to page",
+      confirmationCodes: "Confirmations",
+      payouts: "Payouts",
     },
   }
 
@@ -299,6 +305,27 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
     setShowManualDialog(true)
   }
 
+  const { confirmationCodeCount, payoutCount } = useMemo(() => {
+    let confirmationCodes = 0
+    let payouts = 0
+
+    transactions.forEach((tx) => {
+      const type = tx.raw_data?.["類型"] || tx.type
+      const confirmCode = tx.raw_data?.["確認碼"] || tx.confirmation_code
+
+      if (type === "Payout") {
+        payouts++
+      }
+
+      // 計算有確認碼的記錄數
+      if (confirmCode && confirmCode.trim() !== "") {
+        confirmationCodes++
+      }
+    })
+
+    return { confirmationCodeCount: confirmationCodes, payoutCount: payouts }
+  }, [transactions])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -318,7 +345,9 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
               <CardDescription>
                 {t("platform.accountName")}: {batch.account_name} • {batch.file_name}
                 {" • "}
-                {transactions.length} {l.totalRecords}
+                {l.confirmationCodes}: {confirmationCodeCount} {l.totalRecords}
+                {" • "}
+                {l.payouts}: {payoutCount} {l.totalRecords}
               </CardDescription>
             </div>
             <div className="flex gap-2">

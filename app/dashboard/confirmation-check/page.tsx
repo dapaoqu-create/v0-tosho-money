@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useLanguage } from "@/lib/i18n/context"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,7 @@ interface ImportBatch {
   file_name: string
   record_count: number
   created_at: string
+  confirmation_code_count?: number // 添加確認碼數量欄位
 }
 
 interface NotFoundItem {
@@ -47,17 +48,48 @@ export default function ConfirmationCheckPage() {
     loadBatches()
   }, [])
 
+  const selectedConfirmationCodeCount = useMemo(() => {
+    return batches
+      .filter((b) => selectedBatches.includes(b.id))
+      .reduce((sum, b) => sum + (b.confirmation_code_count || 0), 0)
+  }, [batches, selectedBatches])
+
+  const totalConfirmationCodeCount = useMemo(() => {
+    return batches.reduce((sum, b) => sum + (b.confirmation_code_count || 0), 0)
+  }, [batches])
+
   const loadBatches = async () => {
     const supabase = createClient()
-    const { data, error } = await supabase
+
+    // 獲取批次列表
+    const { data: batchData, error: batchError } = await supabase
       .from("csv_import_batches")
       .select("*")
       .eq("source_type", "platform")
       .order("created_at", { ascending: false })
 
-    if (!error && data) {
-      setBatches(data)
+    if (batchError || !batchData) {
+      setLoading(false)
+      return
     }
+
+    const batchesWithCounts = await Promise.all(
+      batchData.map(async (batch) => {
+        const { count } = await supabase
+          .from("platform_transactions")
+          .select("*", { count: "exact", head: true })
+          .eq("batch_id", batch.id)
+          .not("raw_data->確認碼", "is", null)
+          .neq("raw_data->確認碼", "")
+
+        return {
+          ...batch,
+          confirmation_code_count: count || 0,
+        }
+      }),
+    )
+
+    setBatches(batchesWithCounts)
     setLoading(false)
   }
 
@@ -152,6 +184,11 @@ export default function ConfirmationCheckPage() {
                 <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
                   全選 ({batches.length} 個檔案)
                 </label>
+                {selectedBatches.length > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    已選 {selectedConfirmationCodeCount} 筆確認碼
+                  </Badge>
+                )}
               </div>
 
               <div className="grid gap-2 max-h-64 overflow-y-auto">
@@ -170,7 +207,7 @@ export default function ConfirmationCheckPage() {
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{batch.file_name}</div>
                       <div className="text-sm text-muted-foreground">
-                        {batch.platform_name} - {batch.account_name} · {batch.record_count} 筆
+                        {batch.platform_name} - {batch.account_name} · {batch.confirmation_code_count || 0} 筆確認碼
                       </div>
                     </div>
                     <div className="text-xs text-muted-foreground">
@@ -189,7 +226,8 @@ export default function ConfirmationCheckPage() {
                 ) : (
                   <>
                     <CheckCircle2 className="mr-2 h-4 w-4" />
-                    {t("confirmCheck.startCheck")} ({selectedBatches.length} 個檔案)
+                    {t("confirmCheck.startCheck")} ({selectedBatches.length} 個檔案, {selectedConfirmationCodeCount}{" "}
+                    筆確認碼)
                   </>
                 )}
               </Button>

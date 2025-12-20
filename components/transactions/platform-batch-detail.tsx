@@ -188,15 +188,10 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
     return transactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
   }, [transactions, currentPage])
 
-  // 檢查該行是否需要顯示對賬狀態（有確認碼的預訂行，或已配對的 Payout 行）
   const shouldShowReconcileStatus = (tx: PlatformTransaction) => {
-    const confirmCode = tx.raw_data?.["確認碼"] || tx.confirmation_code
-    const hasConfirmCode = confirmCode && confirmCode.trim() !== ""
     const isPayout = tx.raw_data?.["類型"] === "Payout" || tx.type === "Payout"
-    const isReconciled = tx.reconciliation_status === "reconciled" || tx.matched_bank_transaction_code
-
-    // 有確認碼的預訂行，或已配對的 Payout 行都需要顯示對賬狀態
-    return hasConfirmCode || (isPayout && isReconciled)
+    // 只有 Payout 行才顯示對賬狀態
+    return isPayout
   }
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

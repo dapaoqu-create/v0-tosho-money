@@ -17,6 +17,16 @@ export const translations = {
     loading: "読み込み中...",
     noData: "データがありません",
     all: "すべて",
+    yes: "はい",
+    no: "いいえ",
+    back: "戻る",
+    next: "次へ",
+    previous: "前へ",
+    close: "閉じる",
+    selectAll: "全選択",
+    files: "ファイル",
+    selected: "選択済み",
+    confirmationCodes: "確認コード",
 
     // Navigation
     "nav.dashboard": "ダッシュボード",
@@ -281,6 +291,16 @@ export const translations = {
     loading: "載入中...",
     noData: "暫無資料",
     all: "全部",
+    yes: "是",
+    no: "否",
+    back: "返回",
+    next: "下一步",
+    previous: "上一步",
+    close: "關閉",
+    selectAll: "全選",
+    files: "檔案",
+    selected: "已選取",
+    confirmationCodes: "確認碼",
 
     // Navigation
     "nav.dashboard": "儀表板",
@@ -300,7 +320,7 @@ export const translations = {
     heroTitle1: "智慧管理",
     heroTitle2: "租賃收入",
     heroDescription:
-      "整合 Airbnb、樂天銀行等多平台 CSV，自動對帳功能讓入帳確認更有效率。支援日本確定申告格式報表輸出。",
+      "整合 Airbnb、楽天銀行等多平台 CSV，自動對帳功能讓入帳確認更有效率。支援日本確定申告格式報表輸出。",
     getStarted: "立即開始",
 
     // Features
@@ -543,6 +563,16 @@ export const translations = {
     loading: "Loading...",
     noData: "No data",
     all: "All",
+    yes: "Yes",
+    no: "No",
+    back: "Back",
+    next: "Next",
+    previous: "Previous",
+    close: "Close",
+    selectAll: "Select All",
+    files: "Files",
+    selected: "Selected",
+    confirmationCodes: "Confirmation Codes",
 
     // Navigation
     "nav.dashboard": "Dashboard",

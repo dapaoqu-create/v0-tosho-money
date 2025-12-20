@@ -49,10 +49,6 @@ export default function ConfirmationCheckPage() {
       .reduce((sum, b) => sum + (b.confirmation_code_count || 0), 0)
   }, [batches, selectedBatches])
 
-  const totalConfirmationCodeCount = useMemo(() => {
-    return batches.reduce((sum, b) => sum + (b.confirmation_code_count || 0), 0)
-  }, [batches])
-
   const loadBatches = async () => {
     const supabase = createClient()
 
@@ -70,38 +66,18 @@ export default function ConfirmationCheckPage() {
 
     const batchesWithCounts = await Promise.all(
       batchData.map(async (batch) => {
-        // 使用分頁獲取該批次的所有交易
-        const PAGE_SIZE = 1000
-        let offset = 0
-        let hasMore = true
-        let confirmationCount = 0
-
-        while (hasMore) {
-          const { data: transactions } = await supabase
-            .from("platform_transactions")
-            .select("raw_data")
-            .eq("batch_id", batch.id)
-            .range(offset, offset + PAGE_SIZE - 1)
-
-          if (transactions && transactions.length > 0) {
-            // 計算有確認碼且不是 Payout 的數量（與 API 邏輯一致）
-            confirmationCount += transactions.filter((tx) => {
-              const rawData = tx.raw_data as Record<string, unknown>
-              const code = rawData?.["確認碼"] || rawData?.["Confirmation Code"]
-              const type = rawData?.["類型"] || rawData?.["Type"]
-              return code && String(code).trim() !== "" && type !== "Payout"
-            }).length
-
-            offset += PAGE_SIZE
-            hasMore = transactions.length === PAGE_SIZE
-          } else {
-            hasMore = false
-          }
-        }
+        // 獲取該批次所有交易的確認碼數量
+        const { count } = await supabase
+          .from("platform_transactions")
+          .select("*", { count: "exact", head: true })
+          .eq("batch_id", batch.id)
+          .not("confirmation_code", "is", null)
+          .neq("confirmation_code", "")
+          .neq("type", "Payout")
 
         return {
           ...batch,
-          confirmation_code_count: confirmationCount,
+          confirmation_code_count: count || 0,
         }
       }),
     )
@@ -182,13 +158,13 @@ export default function ConfirmationCheckPage() {
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-2xl font-bold">{t("confirmCheck.title")}</h1>
-        <p className="text-muted-foreground">{t("confirmCheck.description")}</p>
+        <p className="text-muted-foreground">{t("confirmCheck.subtitle")}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("confirmCheck.selectCsv")}</CardTitle>
-          <CardDescription>{t("confirmCheck.selectCsvDesc")}</CardDescription>
+          <CardTitle>{t("confirmCheck.selectBatches")}</CardTitle>
+          <CardDescription>{t("confirmCheck.selectBatchesDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
@@ -197,11 +173,11 @@ export default function ConfirmationCheckPage() {
               onCheckedChange={selectAll}
             />
             <span className="font-medium">
-              {t("common.selectAll")} ({batches.length} {t("confirmCheck.files")})
+              {t("common.selectAll")} ({batches.length} {t("common.files")})
             </span>
             {selectedBatches.length > 0 && (
               <Badge variant="secondary">
-                {t("confirmCheck.selected")} {selectedConfirmationCodeCount} {t("confirmCheck.codes")}
+                {t("common.selected")} {selectedConfirmationCodeCount} {t("common.confirmationCodes")}
               </Badge>
             )}
           </div>
@@ -221,7 +197,7 @@ export default function ConfirmationCheckPage() {
                   <div className="font-medium">{batch.file_name}</div>
                   <div className="text-sm text-muted-foreground">
                     {batch.platform_name} - {batch.account_name} · {batch.confirmation_code_count || 0}{" "}
-                    {t("confirmCheck.codesCount")}
+                    {t("common.confirmationCodes")}
                   </div>
                 </div>
               </div>
@@ -237,8 +213,8 @@ export default function ConfirmationCheckPage() {
             ) : (
               <>
                 <Search className="mr-2 h-4 w-4" />
-                {t("confirmCheck.startCheck")} ({selectedBatches.length} {t("confirmCheck.files")},{" "}
-                {selectedConfirmationCodeCount} {t("confirmCheck.codesCount")})
+                {t("confirmCheck.startCheck")} ({selectedBatches.length} {t("common.files")},{" "}
+                {selectedConfirmationCodeCount} {t("common.confirmationCodes")})
               </>
             )}
           </Button>
@@ -248,11 +224,11 @@ export default function ConfirmationCheckPage() {
       {result && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{t("confirmCheck.result")}</CardTitle>
+            <CardTitle>{t("confirmCheck.results")}</CardTitle>
             {result.notFound.length > 0 && (
               <Button variant="outline" size="sm" onClick={exportNotFound}>
                 <Download className="mr-2 h-4 w-4" />
-                {t("confirmCheck.export")}
+                {t("confirmCheck.exportNotFound")}
               </Button>
             )}
           </CardHeader>
@@ -264,11 +240,11 @@ export default function ConfirmationCheckPage() {
               </div>
               <div className="rounded-lg bg-green-50 p-4 text-center">
                 <div className="text-3xl font-bold text-green-600">{result.matched}</div>
-                <div className="text-sm text-muted-foreground">{t("confirmCheck.registered")}</div>
+                <div className="text-sm text-muted-foreground">{t("confirmCheck.matched")}</div>
               </div>
               <div className="rounded-lg bg-red-50 p-4 text-center">
                 <div className="text-3xl font-bold text-red-600">{result.notFound.length}</div>
-                <div className="text-sm text-muted-foreground">{t("confirmCheck.notRegistered")}</div>
+                <div className="text-sm text-muted-foreground">{t("confirmCheck.notFound")}</div>
               </div>
             </div>
 
@@ -284,7 +260,7 @@ export default function ConfirmationCheckPage() {
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-muted">
                       <tr>
-                        <th className="p-2 text-left">{t("confirmCheck.confirmCode")}</th>
+                        <th className="p-2 text-left">{t("confirmCheck.confirmationCode")}</th>
                         <th className="p-2 text-left">{t("confirmCheck.date")}</th>
                         <th className="p-2 text-left">{t("confirmCheck.guest")}</th>
                         <th className="p-2 text-right">{t("confirmCheck.amount")}</th>
@@ -308,7 +284,7 @@ export default function ConfirmationCheckPage() {
             {result.notFound.length === 0 && result.total > 0 && (
               <div className="flex items-center justify-center gap-2 rounded-lg bg-green-50 p-4 text-green-600">
                 <CheckCircle className="h-5 w-5" />
-                <span className="font-medium">{t("confirmCheck.allRegistered")}</span>
+                <span className="font-medium">{t("confirmCheck.allMatched")}</span>
               </div>
             )}
           </CardContent>

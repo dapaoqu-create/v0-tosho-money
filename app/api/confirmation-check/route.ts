@@ -14,15 +14,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "請選擇至少一個 CSV" }, { status: 400 })
     }
 
-    // 從選定的批次獲取所有確認碼
-    const { data: transactions, error } = await supabase
-      .from("platform_transactions")
-      .select("id, raw_data, batch_id")
-      .in("batch_id", batchIds)
+    const allTransactions: Array<{
+      id: string
+      raw_data: Record<string, string>
+      batch_id: string
+    }> = []
 
-    if (error) {
-      console.error("查詢交易失敗:", error)
-      return NextResponse.json({ error: "查詢交易資料失敗" }, { status: 500 })
+    const PAGE_SIZE = 1000
+    let offset = 0
+    let hasMore = true
+
+    while (hasMore) {
+      const { data: transactions, error } = await supabase
+        .from("platform_transactions")
+        .select("id, raw_data, batch_id")
+        .in("batch_id", batchIds)
+        .range(offset, offset + PAGE_SIZE - 1)
+
+      if (error) {
+        console.error("查詢交易失敗:", error)
+        return NextResponse.json({ error: "查詢交易資料失敗" }, { status: 500 })
+      }
+
+      if (transactions && transactions.length > 0) {
+        allTransactions.push(...transactions)
+        offset += PAGE_SIZE
+        hasMore = transactions.length === PAGE_SIZE
+      } else {
+        hasMore = false
+      }
     }
 
     // 提取所有確認碼（只有預訂行有確認碼，Payout 行沒有）
@@ -35,7 +55,7 @@ export async function POST(request: Request) {
       transactionId: string
     }> = []
 
-    for (const tx of transactions || []) {
+    for (const tx of allTransactions) {
       const rawData = tx.raw_data as Record<string, string>
       const code = rawData["確認碼"] || rawData["Confirmation Code"] || rawData["confirmation_code"]
       const type = rawData["類型"] || rawData["Type"] || rawData["type"]
@@ -69,30 +89,34 @@ export async function POST(request: Request) {
     let apiResult: Record<string, boolean> = {}
 
     try {
-      // 使用批量檢查 API
-      const response = await fetch(`${IGOHOTEL_API_BASE}/api/guest_registry.php`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": IGOHOTEL_API_KEY,
-        },
-        body: JSON.stringify({ check_codes: uniqueCodes }),
-      })
+      const BATCH_SIZE = 500
+      for (let i = 0; i < uniqueCodes.length; i += BATCH_SIZE) {
+        const batchCodes = uniqueCodes.slice(i, i + BATCH_SIZE)
 
-      if (!response.ok) {
-        throw new Error(`API 回應錯誤: ${response.status}`)
-      }
+        const response = await fetch(`${IGOHOTEL_API_BASE}/api/guest_registry.php`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": IGOHOTEL_API_KEY,
+          },
+          body: JSON.stringify({ check_codes: batchCodes }),
+        })
 
-      const data = await response.json()
+        if (!response.ok) {
+          throw new Error(`API 回應錯誤: ${response.status}`)
+        }
 
-      // 假設 API 回傳格式為 { results: { "CODE1": true, "CODE2": false, ... } }
-      if (data.results) {
-        apiResult = data.results
-      } else if (Array.isArray(data)) {
-        // 或者回傳陣列格式
-        for (const item of data) {
-          if (item.confirmation_code && typeof item.exists !== "undefined") {
-            apiResult[item.confirmation_code] = item.exists
+        const data = await response.json()
+
+        // 假設 API 回傳格式為 { results: { "CODE1": true, "CODE2": false, ... } }
+        if (data.results) {
+          apiResult = { ...apiResult, ...data.results }
+        } else if (Array.isArray(data)) {
+          // 或者回傳陣列格式
+          for (const item of data) {
+            if (item.confirmation_code && typeof item.exists !== "undefined") {
+              apiResult[item.confirmation_code] = item.exists
+            }
           }
         }
       }

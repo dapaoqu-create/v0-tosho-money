@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +41,8 @@ import {
   Edit2,
   ChevronLeft,
   ChevronRight,
+  Calculator,
+  X,
 } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useLanguage } from "@/lib/i18n/context"
@@ -92,17 +95,78 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
 
   const csvHeaders =
     transactions.length > 0 && transactions[0].raw_data
       ? Object.keys(transactions[0].raw_data).filter((h) => h !== "_headers" && h !== "_row_index")
       : []
 
+  const amountColumnName = useMemo(() => {
+    const possibleNames = ["入出金(円)", "入出金(円）", "入出金", "金額", "Amount", "amount"]
+    for (const name of possibleNames) {
+      if (csvHeaders.includes(name)) return name
+    }
+    return null
+  }, [csvHeaders])
+
   const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE)
   const paginatedTransactions = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
     return transactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
   }, [transactions, currentPage])
+
+  const selectedTotal = useMemo(() => {
+    if (selectedRows.size === 0 || !amountColumnName) return null
+
+    let total = 0
+    let count = 0
+
+    for (const txId of selectedRows) {
+      const tx = transactions.find((t) => t.id === txId)
+      if (tx?.raw_data?.[amountColumnName]) {
+        const amountStr = tx.raw_data[amountColumnName]
+        const amount = Number.parseInt(amountStr.replace(/[,\s]/g, ""), 10)
+        if (!isNaN(amount)) {
+          total += amount
+          count++
+        }
+      }
+    }
+
+    return { total, count }
+  }, [selectedRows, transactions, amountColumnName])
+
+  const toggleRowSelection = useCallback((txId: string) => {
+    setSelectedRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(txId)) {
+        next.delete(txId)
+      } else {
+        next.add(txId)
+      }
+      return next
+    })
+  }, [])
+
+  const toggleSelectAll = useCallback(() => {
+    const currentPageIds = paginatedTransactions.map((tx) => tx.id)
+    const allSelected = currentPageIds.every((id) => selectedRows.has(id))
+
+    setSelectedRows((prev) => {
+      const next = new Set(prev)
+      if (allSelected) {
+        currentPageIds.forEach((id) => next.delete(id))
+      } else {
+        currentPageIds.forEach((id) => next.add(id))
+      }
+      return next
+    })
+  }, [paginatedTransactions, selectedRows])
+
+  const clearSelection = useCallback(() => {
+    setSelectedRows(new Set())
+  }, [])
 
   const labels = {
     ja: {
@@ -118,6 +182,10 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       of: "/",
       totalRecords: "件",
       goToPage: "ページへ移動",
+      selected: "選択中",
+      items: "件",
+      total: "合計",
+      clearSelection: "選択解除",
     },
     "zh-TW": {
       itemNo: "項次",
@@ -132,6 +200,10 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       of: "/",
       totalRecords: "筆",
       goToPage: "跳至頁面",
+      selected: "已選擇",
+      items: "筆",
+      total: "合計",
+      clearSelection: "清除選擇",
     },
     en: {
       itemNo: "No.",
@@ -146,6 +218,10 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       of: "of",
       totalRecords: "records",
       goToPage: "Go to page",
+      selected: "Selected",
+      items: "items",
+      total: "Total",
+      clearSelection: "Clear",
     },
   }
 
@@ -328,11 +404,39 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
             </div>
           )}
 
+          {selectedTotal && selectedTotal.count > 0 && (
+            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-300">
+              <div className="bg-primary text-primary-foreground shadow-lg rounded-lg px-6 py-3 flex items-center gap-4">
+                <Calculator className="h-5 w-5" />
+                <div className="flex items-center gap-2">
+                  <span className="text-sm opacity-90">
+                    {l.selected} {selectedTotal.count} {l.items}
+                  </span>
+                  <span className="text-xl font-bold">
+                    {l.total}: ¥{selectedTotal.total.toLocaleString()}
+                  </span>
+                </div>
+                <Button variant="secondary" size="sm" onClick={clearSelection} className="ml-2">
+                  <X className="h-4 w-4 mr-1" />
+                  {l.clearSelection}
+                </Button>
+              </div>
+            </div>
+          )}
+
           <ScrollArea className="w-full whitespace-nowrap rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky left-0 bg-background z-10 min-w-[60px]">{l.itemNo}</TableHead>
+                  <TableHead className="sticky left-0 bg-background z-10 w-[40px]">
+                    <Checkbox
+                      checked={
+                        paginatedTransactions.length > 0 && paginatedTransactions.every((tx) => selectedRows.has(tx.id))
+                      }
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
+                  <TableHead className="min-w-[60px]">{l.itemNo}</TableHead>
                   <TableHead className="min-w-[100px]">{l.reconcileStatus}</TableHead>
                   <TableHead className="min-w-[200px]">{l.confirmationCode}</TableHead>
                   <TableHead className="min-w-[120px]">{t("bank.transactionCode")}</TableHead>
@@ -344,9 +448,13 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
               <TableBody>
                 {paginatedTransactions.map((tx, index) => {
                   const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1
+                  const isSelected = selectedRows.has(tx.id)
                   return (
-                    <TableRow key={tx.id}>
-                      <TableCell className="sticky left-0 bg-background z-10 font-medium">{globalIndex}</TableCell>
+                    <TableRow key={tx.id} className={isSelected ? "bg-primary/10" : undefined}>
+                      <TableCell className="sticky left-0 bg-background z-10">
+                        <Checkbox checked={isSelected} onCheckedChange={() => toggleRowSelection(tx.id)} />
+                      </TableCell>
+                      <TableCell className="font-medium">{globalIndex}</TableCell>
                       <TableCell>
                         {tx.reconciliation_status === "reconciled" ? (
                           <Badge variant="default" className="bg-green-500">

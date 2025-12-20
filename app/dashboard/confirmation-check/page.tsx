@@ -75,16 +75,23 @@ export default function ConfirmationCheckPage() {
 
     const batchesWithCounts = await Promise.all(
       batchData.map(async (batch) => {
-        const { count } = await supabase
+        // 查詢該批次的所有交易
+        const { data: transactions } = await supabase
           .from("platform_transactions")
-          .select("*", { count: "exact", head: true })
+          .select("raw_data")
           .eq("batch_id", batch.id)
-          .not("raw_data->確認碼", "is", null)
-          .neq("raw_data->確認碼", "")
+
+        // 在前端計算有確認碼的數量
+        const confirmationCount =
+          transactions?.filter((tx) => {
+            const rawData = tx.raw_data as Record<string, unknown>
+            const code = rawData?.["確認碼"]
+            return code && String(code).trim() !== ""
+          }).length || 0
 
         return {
           ...batch,
-          confirmation_code_count: count || 0,
+          confirmation_code_count: confirmationCount,
         }
       }),
     )

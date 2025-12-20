@@ -95,54 +95,70 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 按 batch_id 和 _row_index 建立索引
-    const txByBatchAndRow = new Map<string, any>()
+    const txByBatch = new Map<string, any[]>()
     let hasRowIndex = false
 
     for (const tx of platformTransactions) {
       const rawData = tx.raw_data || {}
       const rowIndex = rawData["_row_index"]
-      const batchId = tx.batch_id
+      const batchId = tx.batch_id || "default"
 
       if (rowIndex !== undefined && rowIndex !== null) {
         hasRowIndex = true
-        const key = `${batchId}:${rowIndex}`
-        txByBatchAndRow.set(key, tx)
       }
+
+      if (!txByBatch.has(batchId)) {
+        txByBatch.set(batchId, [])
+      }
+      txByBatch.get(batchId)!.push(tx)
+    }
+
+    // 按 _row_index 排序每個 batch
+    for (const [batchId, txList] of txByBatch) {
+      txList.sort((a, b) => {
+        const rowA = a.raw_data?.["_row_index"] ?? 999999
+        const rowB = b.raw_data?.["_row_index"] ?? 999999
+        return Number(rowA) - Number(rowB)
+      })
     }
 
     debug.hasRowIndex = hasRowIndex
-    debug.txByBatchAndRowSize = txByBatchAndRow.size
+    debug.batchCount = txByBatch.size
 
-    // 收集 Payout 並找到下一行的確認碼
     const payoutList: any[] = []
 
-    for (const tx of platformTransactions) {
-      const rawData = tx.raw_data || {}
-      const txType = String(rawData["類型"] || "").trim()
+    for (const [batchId, txList] of txByBatch) {
+      // 找出所有 Payout 的索引位置
+      const payoutIndices: number[] = []
+      for (let i = 0; i < txList.length; i++) {
+        const rawData = txList[i].raw_data || {}
+        const txType = String(rawData["類型"] || "").trim()
+        if (txType === "Payout") {
+          payoutIndices.push(i)
+        }
+      }
 
-      if (txType === "Payout") {
+      // 對每個 Payout，收集到下一個 Payout 之間的所有確認碼
+      for (let p = 0; p < payoutIndices.length; p++) {
+        const payoutIdx = payoutIndices[p]
+        const nextPayoutIdx = p + 1 < payoutIndices.length ? payoutIndices[p + 1] : txList.length
+
+        const tx = txList[payoutIdx]
+        const rawData = tx.raw_data || {}
         const payoutAmountStr = String(rawData["收款"] || "")
         const payoutAmount = parseAmount(payoutAmountStr)
         const txDate = String(rawData["日期"] || "").trim()
         const parsedDate = parseDate(txDate)
         const rowIndex = rawData["_row_index"]
-        const batchId = tx.batch_id
 
-        let confirmationCode = null
-
-        // 方法1: 使用行號找下一行的確認碼
-        if (hasRowIndex && rowIndex !== undefined && rowIndex !== null) {
-          const nextRowIndex = Number.parseInt(rowIndex) + 1
-          const nextKey = `${batchId}:${nextRowIndex}`
-          const nextTx = txByBatchAndRow.get(nextKey)
-
-          if (nextTx) {
-            const nextRawData = nextTx.raw_data || {}
-            const nextConfirmCode = String(nextRawData["確認碼"] || "").trim()
-            if (nextConfirmCode) {
-              confirmationCode = nextConfirmCode
-            }
+        // 收集 Payout 到下一個 Payout 之間的所有確認碼
+        const confirmationCodes: string[] = []
+        for (let j = payoutIdx + 1; j < nextPayoutIdx; j++) {
+          const nextTx = txList[j]
+          const nextRawData = nextTx.raw_data || {}
+          const nextConfirmCode = String(nextRawData["確認碼"] || "").trim()
+          if (nextConfirmCode) {
+            confirmationCodes.push(nextConfirmCode)
           }
         }
 
@@ -153,7 +169,8 @@ export async function POST(request: NextRequest) {
             date: txDate,
             parsedDate,
             rawData,
-            confirmationCode,
+            confirmationCodes,
+            confirmationCode: confirmationCodes.join(", ") || null,
             rowIndex,
             batchId,
           })
@@ -162,12 +179,12 @@ export async function POST(request: NextRequest) {
     }
 
     debug.payoutCount = payoutList.length
-    debug.payoutsWithConfirmCode = payoutList.filter((p) => p.confirmationCode).length
+    debug.payoutsWithConfirmCode = payoutList.filter((p) => p.confirmationCodes.length > 0).length
     debug.payoutExamples = payoutList.slice(0, 10).map((p) => ({
       amount: p.amount,
       date: p.date,
       rowIndex: p.rowIndex,
-      confirmationCode: p.confirmationCode,
+      confirmationCodes: p.confirmationCodes,
     }))
 
     // 收集銀行入金交易
@@ -255,6 +272,7 @@ export async function POST(request: NextRequest) {
           matches.push({
             index: matchIndex++,
             confirmationCode: bestMatch.confirmationCode || "-",
+            confirmationCodes: bestMatch.confirmationCodes || [],
             transactionCode: bankTx.transactionCode || "-",
             transactionDate: bankTx.date,
             payoutDate: bestMatch.date,

@@ -10,68 +10,77 @@ export async function POST(request: Request) {
     const supabase = await createClient()
     const { batchIds } = await request.json()
 
+    console.log("[v0] 收到的 batchIds:", batchIds)
+    console.log("[v0] batchIds 數量:", batchIds?.length)
+
     if (!batchIds || !Array.isArray(batchIds) || batchIds.length === 0) {
       return NextResponse.json({ error: "請選擇至少一個 CSV" }, { status: 400 })
     }
 
-    const allTransactions: Array<{
-      id: string
-      raw_data: Record<string, string>
-      batch_id: string
-    }> = []
+    const confirmationCodesMap = new Map<
+      string,
+      {
+        code: string
+        date: string
+        guest: string
+        amount: string
+        batchId: string
+        transactionId: string
+      }
+    >()
 
     const PAGE_SIZE = 1000
-    let offset = 0
-    let hasMore = true
 
-    while (hasMore) {
-      const { data: transactions, error } = await supabase
-        .from("platform_transactions")
-        .select("id, raw_data, batch_id")
-        .in("batch_id", batchIds)
-        .range(offset, offset + PAGE_SIZE - 1)
+    for (const batchId of batchIds) {
+      let offset = 0
+      let hasMore = true
 
-      if (error) {
-        console.error("查詢交易失敗:", error)
-        return NextResponse.json({ error: "查詢交易資料失敗" }, { status: 500 })
-      }
+      while (hasMore) {
+        const { data: transactions, error } = await supabase
+          .from("platform_transactions")
+          .select("id, raw_data, batch_id")
+          .eq("batch_id", batchId)
+          .range(offset, offset + PAGE_SIZE - 1)
 
-      if (transactions && transactions.length > 0) {
-        allTransactions.push(...transactions)
-        offset += PAGE_SIZE
-        hasMore = transactions.length === PAGE_SIZE
-      } else {
-        hasMore = false
-      }
-    }
+        if (error) {
+          console.error("[v0] 查詢交易失敗:", error)
+          return NextResponse.json({ error: "查詢交易資料失敗" }, { status: 500 })
+        }
 
-    // 提取所有確認碼（只有預訂行有確認碼，Payout 行沒有）
-    const confirmationCodes: Array<{
-      code: string
-      date: string
-      guest: string
-      amount: string
-      batchId: string
-      transactionId: string
-    }> = []
+        if (transactions && transactions.length > 0) {
+          for (const tx of transactions) {
+            const rawData = tx.raw_data as Record<string, string>
+            const code = rawData["確認碼"] || rawData["Confirmation Code"] || rawData["confirmation_code"]
+            const type = rawData["類型"] || rawData["Type"] || rawData["type"]
 
-    for (const tx of allTransactions) {
-      const rawData = tx.raw_data as Record<string, string>
-      const code = rawData["確認碼"] || rawData["Confirmation Code"] || rawData["confirmation_code"]
-      const type = rawData["類型"] || rawData["Type"] || rawData["type"]
+            // 只處理有確認碼的預訂行（不是 Payout）
+            if (code && code.trim() && type !== "Payout") {
+              const trimmedCode = code.trim()
+              // 使用 Map 去重，相同確認碼只保留一次
+              if (!confirmationCodesMap.has(trimmedCode)) {
+                confirmationCodesMap.set(trimmedCode, {
+                  code: trimmedCode,
+                  date: rawData["日期"] || rawData["Date"] || "",
+                  guest: rawData["房客"] || rawData["Guest"] || "",
+                  amount: rawData["金額"] || rawData["Amount"] || "",
+                  batchId: tx.batch_id,
+                  transactionId: tx.id,
+                })
+              }
+            }
+          }
 
-      // 只處理有確認碼的預訂行
-      if (code && code.trim() && type !== "Payout") {
-        confirmationCodes.push({
-          code: code.trim(),
-          date: rawData["日期"] || rawData["Date"] || "",
-          guest: rawData["房客"] || rawData["Guest"] || "",
-          amount: rawData["金額"] || rawData["Amount"] || "",
-          batchId: tx.batch_id,
-          transactionId: tx.id,
-        })
+          offset += PAGE_SIZE
+          hasMore = transactions.length === PAGE_SIZE
+        } else {
+          hasMore = false
+        }
       }
     }
+
+    const confirmationCodes = Array.from(confirmationCodesMap.values())
+
+    console.log("[v0] 找到的唯一確認碼數量:", confirmationCodes.length)
 
     if (confirmationCodes.length === 0) {
       return NextResponse.json({
@@ -84,14 +93,13 @@ export async function POST(request: Request) {
 
     // 批量調用 igohotel API 檢查確認碼
     const codes = confirmationCodes.map((c) => c.code)
-    const uniqueCodes = [...new Set(codes)]
 
     let apiResult: Record<string, boolean> = {}
 
     try {
       const BATCH_SIZE = 500
-      for (let i = 0; i < uniqueCodes.length; i += BATCH_SIZE) {
-        const batchCodes = uniqueCodes.slice(i, i + BATCH_SIZE)
+      for (let i = 0; i < codes.length; i += BATCH_SIZE) {
+        const batchCodes = codes.slice(i, i + BATCH_SIZE)
 
         const response = await fetch(`${IGOHOTEL_API_BASE}/api/guest_registry.php`, {
           method: "POST",
@@ -121,8 +129,7 @@ export async function POST(request: Request) {
         }
       }
     } catch (apiError) {
-      console.error("igohotel API 錯誤:", apiError)
-      // 如果 API 失敗，返回錯誤但不中斷
+      console.error("[v0] igohotel API 錯誤:", apiError)
       return NextResponse.json({
         total: confirmationCodes.length,
         matched: 0,
@@ -144,6 +151,15 @@ export async function POST(request: Request) {
       }
     }
 
+    console.log(
+      "[v0] 檢查結果 - 總數:",
+      confirmationCodes.length,
+      "已登記:",
+      matched.length,
+      "未登記:",
+      notFound.length,
+    )
+
     return NextResponse.json({
       total: confirmationCodes.length,
       matched: matched.length,
@@ -151,7 +167,7 @@ export async function POST(request: Request) {
       matchedList: matched,
     })
   } catch (error) {
-    console.error("確認碼檢查錯誤:", error)
+    console.error("[v0] 確認碼檢查錯誤:", error)
     return NextResponse.json({ error: "檢查過程發生錯誤" }, { status: 500 })
   }
 }

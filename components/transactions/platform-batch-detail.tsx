@@ -188,10 +188,15 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
     return transactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
   }, [transactions, currentPage])
 
-  // 檢查該行是否有確認碼（對賬狀態只顯示在有確認碼的行）
-  const hasConfirmationCode = (tx: PlatformTransaction) => {
+  // 檢查該行是否需要顯示對賬狀態（有確認碼的預訂行，或已配對的 Payout 行）
+  const shouldShowReconcileStatus = (tx: PlatformTransaction) => {
     const confirmCode = tx.raw_data?.["確認碼"] || tx.confirmation_code
-    return confirmCode && confirmCode.trim() !== ""
+    const hasConfirmCode = confirmCode && confirmCode.trim() !== ""
+    const isPayout = tx.raw_data?.["類型"] === "Payout" || tx.type === "Payout"
+    const isReconciled = tx.reconciliation_status === "reconciled" || tx.matched_bank_transaction_code
+
+    // 有確認碼的預訂行，或已配對的 Payout 行都需要顯示對賬狀態
+    return hasConfirmCode || (isPayout && isReconciled)
   }
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -388,7 +393,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
               </TableHeader>
               <TableBody>
                 {paginatedTransactions.map((tx, index) => {
-                  const showReconcileStatus = hasConfirmationCode(tx)
+                  const showReconcileStatus = shouldShowReconcileStatus(tx)
                   const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1
                   return (
                     <TableRow key={tx.id}>

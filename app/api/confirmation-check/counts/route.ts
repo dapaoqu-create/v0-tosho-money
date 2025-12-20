@@ -5,8 +5,10 @@ export async function GET() {
   try {
     const supabase = await createClient()
 
-    // 獲取所有平台交易批次
-    const { data: batches, error: batchError } = await supabase.from("platform_transaction_batches").select("id")
+    const { data: batches, error: batchError } = await supabase
+      .from("csv_import_batches")
+      .select("id")
+      .eq("source_type", "platform")
 
     if (batchError) {
       console.error("查詢批次失敗:", batchError)

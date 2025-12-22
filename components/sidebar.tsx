@@ -17,6 +17,7 @@ import {
   Building2,
   CreditCard,
   CheckCircle2,
+  StickyNote,
 } from "lucide-react"
 
 export function Sidebar() {
@@ -31,6 +32,7 @@ export function Sidebar() {
     { name: t("nav.import"), href: "/dashboard/import", icon: Upload },
     { name: t("nav.reconciliation"), href: "/dashboard/reconciliation", icon: RefreshCcw },
     { name: t("nav.confirmationCheck"), href: "/dashboard/confirmation-check", icon: CheckCircle2 },
+    { name: t("nav.memos"), href: "/dashboard/memos", icon: StickyNote },
     { name: t("nav.reports"), href: "/dashboard/reports", icon: FileText },
     { name: t("nav.statistics"), href: "/dashboard/statistics", icon: BarChart3 },
     { name: t("nav.users"), href: "/dashboard/users", icon: Users },

@@ -44,6 +44,7 @@ import {
   Calculator,
   X,
   Filter,
+  Search,
 } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useLanguage } from "@/lib/i18n/context"
@@ -97,6 +98,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
+  const [searchQuery, setSearchQuery] = useState("")
 
   const [filters, setFilters] = useState({
     unreconciled: false,
@@ -120,10 +122,37 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
   }, [csvHeaders])
 
   const filteredTransactions = useMemo(() => {
-    const hasActiveFilter = Object.values(filters).some((v) => v)
-    if (!hasActiveFilter) return transactions
+    let result = transactions
 
-    return transactions.filter((tx) => {
+    // 搜尋過濾
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim()
+      result = result.filter((tx) => {
+        // 搜尋所有 raw_data 欄位
+        if (tx.raw_data) {
+          for (const value of Object.values(tx.raw_data)) {
+            if (value && String(value).toLowerCase().includes(query)) {
+              return true
+            }
+          }
+        }
+        // 搜尋確認碼
+        if (tx.matched_confirmation_codes?.some((code) => code.toLowerCase().includes(query))) {
+          return true
+        }
+        // 搜尋交易編碼
+        if (tx.transaction_code?.toLowerCase().includes(query)) {
+          return true
+        }
+        return false
+      })
+    }
+
+    // 篩選過濾
+    const hasActiveFilter = Object.values(filters).some((v) => v)
+    if (!hasActiveFilter) return result
+
+    return result.filter((tx) => {
       const matchesReconciliation =
         (!filters.unreconciled && !filters.reconciled) ||
         (filters.unreconciled && tx.reconciliation_status !== "reconciled") ||
@@ -141,7 +170,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
 
       return matchesReconciliation && matchesAmount
     })
-  }, [transactions, filters, amountColumnName])
+  }, [transactions, filters, amountColumnName, searchQuery])
 
   const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
   const paginatedTransactions = useMemo(() => {
@@ -416,6 +445,29 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
               </CardDescription>
             </div>
             <div className="flex gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder={t("common.search")}
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value)
+                    setCurrentPage(1) // 搜尋時重置頁碼
+                  }}
+                  className="pl-9 w-[200px]"
+                />
+                {searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6"
+                    onClick={() => setSearchQuery("")}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
               <Button variant={activeFilterCount > 0 ? "default" : "outline"} onClick={() => setShowFilterDialog(true)}>
                 <Filter className="mr-2 h-4 w-4" />
                 {l.filter}

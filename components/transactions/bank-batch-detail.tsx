@@ -43,6 +43,7 @@ import {
   ChevronRight,
   Calculator,
   X,
+  Filter,
 } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useLanguage } from "@/lib/i18n/context"
@@ -97,6 +98,14 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
 
+  const [filters, setFilters] = useState({
+    unreconciled: false,
+    reconciled: false,
+    positiveAmount: false,
+    negativeAmount: false,
+  })
+  const [showFilterDialog, setShowFilterDialog] = useState(false)
+
   const csvHeaders =
     transactions.length > 0 && transactions[0].raw_data
       ? Object.keys(transactions[0].raw_data).filter((h) => h !== "_headers" && h !== "_row_index")
@@ -110,11 +119,35 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     return null
   }, [csvHeaders])
 
-  const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE)
+  const filteredTransactions = useMemo(() => {
+    const hasActiveFilter = Object.values(filters).some((v) => v)
+    if (!hasActiveFilter) return transactions
+
+    return transactions.filter((tx) => {
+      const matchesReconciliation =
+        (!filters.unreconciled && !filters.reconciled) ||
+        (filters.unreconciled && tx.reconciliation_status !== "reconciled") ||
+        (filters.reconciled && tx.reconciliation_status === "reconciled")
+
+      const matchesAmount =
+        (!filters.positiveAmount && !filters.negativeAmount) ||
+        (() => {
+          if (!amountColumnName || !tx.raw_data?.[amountColumnName]) return false
+          const amountStr = tx.raw_data[amountColumnName]
+          const amount = Number.parseInt(amountStr.replace(/[,\s]/g, ""), 10)
+          if (isNaN(amount)) return false
+          return (filters.positiveAmount && amount > 0) || (filters.negativeAmount && amount < 0)
+        })()
+
+      return matchesReconciliation && matchesAmount
+    })
+  }, [transactions, filters, amountColumnName])
+
+  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
   const paginatedTransactions = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
-    return transactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-  }, [transactions, currentPage])
+    return filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  }, [filteredTransactions, currentPage])
 
   const selectedTotal = useMemo(() => {
     if (selectedRows.size === 0 || !amountColumnName) return null
@@ -123,7 +156,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     let count = 0
 
     for (const txId of selectedRows) {
-      const tx = transactions.find((t) => t.id === txId)
+      const tx = filteredTransactions.find((t) => t.id === txId)
       if (tx?.raw_data?.[amountColumnName]) {
         const amountStr = tx.raw_data[amountColumnName]
         const amount = Number.parseInt(amountStr.replace(/[,\s]/g, ""), 10)
@@ -135,7 +168,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     }
 
     return { total, count }
-  }, [selectedRows, transactions, amountColumnName])
+  }, [selectedRows, filteredTransactions, amountColumnName])
 
   const toggleRowSelection = useCallback((txId: string) => {
     setSelectedRows((prev) => {
@@ -168,6 +201,18 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     setSelectedRows(new Set())
   }, [])
 
+  const toggleFilter = useCallback((filterKey: keyof typeof filters) => {
+    setFilters((prev) => ({
+      ...prev,
+      [filterKey]: !prev[filterKey],
+    }))
+    setCurrentPage(1)
+  }, [])
+
+  const activeFilterCount = useMemo(() => {
+    return Object.values(filters).filter((v) => v).length
+  }, [filters])
+
   const labels = {
     ja: {
       itemNo: "項次",
@@ -186,6 +231,11 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       items: "件",
       total: "合計",
       clearSelection: "選択解除",
+      filter: "篩選",
+      filterOptions: "篩選選項",
+      positiveAmount: "入出金(円)正數",
+      negativeAmount: "入出金(円)負數",
+      activeFilters: "個篩選",
     },
     "zh-TW": {
       itemNo: "項次",
@@ -204,6 +254,11 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       items: "筆",
       total: "合計",
       clearSelection: "清除選擇",
+      filter: "篩選",
+      filterOptions: "篩選選項",
+      positiveAmount: "入出金(円)正數",
+      negativeAmount: "入出金(円)負數",
+      activeFilters: "個篩選",
     },
     en: {
       itemNo: "No.",
@@ -222,6 +277,11 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       items: "items",
       total: "Total",
       clearSelection: "Clear",
+      filter: "Filter",
+      filterOptions: "Filter Options",
+      positiveAmount: "Positive Amount",
+      negativeAmount: "Negative Amount",
+      activeFilters: "filters",
     },
   }
 
@@ -350,10 +410,21 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
                 {batch.file_name} • {t("bank.bankCode")}: {batch.bank_code}
                 {batch.memo && ` • ${t("bank.memo")}: ${batch.memo}`}
                 {" • "}
-                {transactions.length} {l.totalRecords}
+                {filteredTransactions.length} {l.totalRecords}
+                {filteredTransactions.length !== transactions.length &&
+                  ` (${t("common.total")} ${transactions.length})`}
               </CardDescription>
             </div>
             <div className="flex gap-2">
+              <Button variant={activeFilterCount > 0 ? "default" : "outline"} onClick={() => setShowFilterDialog(true)}>
+                <Filter className="mr-2 h-4 w-4" />
+                {l.filter}
+                {activeFilterCount > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {activeFilterCount}
+                  </Badge>
+                )}
+              </Button>
               <Button variant="outline" onClick={() => setShowUpdateDialog(true)}>
                 <Upload className="mr-2 h-4 w-4" />
                 {t("bank.updateCsv")}
@@ -369,7 +440,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
           {totalPages > 1 && (
             <div className="flex items-center justify-between mb-4">
               <div className="text-sm text-muted-foreground">
-                {l.page} {currentPage} {l.of} {totalPages} ({transactions.length} {l.totalRecords})
+                {l.page} {currentPage} {l.of} {totalPages} ({filteredTransactions.length} {l.totalRecords})
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -527,6 +598,75 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={showFilterDialog} onOpenChange={setShowFilterDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{l.filterOptions}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="filter-unreconciled"
+                  checked={filters.unreconciled}
+                  onCheckedChange={() => toggleFilter("unreconciled")}
+                />
+                <Label htmlFor="filter-unreconciled" className="cursor-pointer">
+                  {l.unreconciled}
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="filter-reconciled"
+                  checked={filters.reconciled}
+                  onCheckedChange={() => toggleFilter("reconciled")}
+                />
+                <Label htmlFor="filter-reconciled" className="cursor-pointer">
+                  {l.reconciled}
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="filter-positive"
+                  checked={filters.positiveAmount}
+                  onCheckedChange={() => toggleFilter("positiveAmount")}
+                />
+                <Label htmlFor="filter-positive" className="cursor-pointer">
+                  {l.positiveAmount}
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="filter-negative"
+                  checked={filters.negativeAmount}
+                  onCheckedChange={() => toggleFilter("negativeAmount")}
+                />
+                <Label htmlFor="filter-negative" className="cursor-pointer">
+                  {l.negativeAmount}
+                </Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setFilters({
+                  unreconciled: false,
+                  reconciled: false,
+                  positiveAmount: false,
+                  negativeAmount: false,
+                })
+                setCurrentPage(1)
+              }}
+            >
+              {t("common.reset")}
+            </Button>
+            <Button onClick={() => setShowFilterDialog(false)}>{t("confirm")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
         <DialogContent>

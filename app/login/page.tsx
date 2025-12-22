@@ -101,7 +101,7 @@ export default function LoginPage() {
             </CardContent>
           </Card>
 
-          <p className="mt-4 text-center text-sm text-muted-foreground">{t("defaultCredentials")}</p>
+          {/* 移除預設帳密顯示 */}
         </div>
       </div>
     </div>

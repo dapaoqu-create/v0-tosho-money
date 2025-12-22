@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
         .eq("id", transactionId)
         .single()
 
-      // 更新對應的平台交易
+      // 查找有此確認碼的平台交易（預訂行）
       const { data: platformTxs } = await supabase
         .from("platform_transactions")
         .select("*")
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
 
       if (platformTxs && platformTxs.length > 0) {
         for (const platformTx of platformTxs) {
+          // 更新預訂行
           await supabase
             .from("platform_transactions")
             .update({
@@ -50,6 +51,28 @@ export async function POST(request: NextRequest) {
               reconciled: true,
             })
             .eq("id", platformTx.id)
+
+          // Payout 行是同一批次中，在預訂行之前的最近一個 Payout
+          const { data: payoutTx } = await supabase
+            .from("platform_transactions")
+            .select("*")
+            .eq("batch_id", platformTx.batch_id)
+            .eq("type", "Payout")
+            .lt("_row_index", platformTx._row_index)
+            .order("_row_index", { ascending: false })
+            .limit(1)
+            .single()
+
+          if (payoutTx) {
+            await supabase
+              .from("platform_transactions")
+              .update({
+                reconciliation_status: "reconciled",
+                matched_bank_transaction_code: bankTx?.transaction_code || null,
+                reconciled: true,
+              })
+              .eq("id", payoutTx.id)
+          }
         }
       }
 
@@ -66,10 +89,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Missing transaction code" }, { status: 400 })
       }
 
-      // 獲取平台交易的確認碼
+      // 獲取平台交易的確認碼和類型
       const { data: platformTx } = await supabase
         .from("platform_transactions")
-        .select("confirmation_code")
+        .select("*")
         .eq("id", transactionId)
         .single()
 
@@ -82,6 +105,58 @@ export async function POST(request: NextRequest) {
           reconciled: true,
         })
         .eq("id", transactionId)
+
+      if (platformTx?.type === "Payout") {
+        // 查找此 Payout 後面的預訂行（直到下一個 Payout）
+        const { data: nextPayout } = await supabase
+          .from("platform_transactions")
+          .select("_row_index")
+          .eq("batch_id", platformTx.batch_id)
+          .eq("type", "Payout")
+          .gt("_row_index", platformTx._row_index)
+          .order("_row_index", { ascending: true })
+          .limit(1)
+          .single()
+
+        // 更新這之間的所有預訂行
+        let query = supabase
+          .from("platform_transactions")
+          .update({
+            reconciliation_status: "reconciled",
+            matched_bank_transaction_code: transactionCode,
+            reconciled: true,
+          })
+          .eq("batch_id", platformTx.batch_id)
+          .neq("type", "Payout")
+          .gt("_row_index", platformTx._row_index)
+
+        if (nextPayout) {
+          query = query.lt("_row_index", nextPayout._row_index)
+        }
+
+        await query
+      } else if (platformTx) {
+        const { data: payoutTx } = await supabase
+          .from("platform_transactions")
+          .select("*")
+          .eq("batch_id", platformTx.batch_id)
+          .eq("type", "Payout")
+          .lt("_row_index", platformTx._row_index)
+          .order("_row_index", { ascending: false })
+          .limit(1)
+          .single()
+
+        if (payoutTx) {
+          await supabase
+            .from("platform_transactions")
+            .update({
+              reconciliation_status: "reconciled",
+              matched_bank_transaction_code: transactionCode,
+              reconciled: true,
+            })
+            .eq("id", payoutTx.id)
+        }
+      }
 
       // 更新對應的銀行交易
       const { data: bankTxs } = await supabase

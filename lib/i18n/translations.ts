@@ -32,6 +32,8 @@ export const translations = {
     "status.label": "状態",
     "status.completed": "完了",
     "status.pending": "未完了",
+    "status.unreconciled": "未対帳",
+    "status.reconciled": "対帳済",
 
     // Navigation
     "nav.dashboard": "ダッシュボード",
@@ -124,6 +126,12 @@ export const translations = {
     "bank.replaceMode": "置換",
     "bank.replaceModeDesc": "既存のデータをすべて削除し、新しいデータで置き換えます。",
     "bank.records": "件",
+    "bank.filterDesc": "表示するデータを絞り込みます",
+    "bank.reconciliationStatus": "対帳ステータス",
+    "bank.amountFilter": "金額タイプ",
+    "bank.positiveAmount": "入金（プラス）",
+    "bank.negativeAmount": "出金（マイナス）",
+    "bank.clearFilter": "フィルタをクリア",
 
     // Platform Transactions
     "platform.title": "プラットフォーム取引",
@@ -339,6 +347,8 @@ export const translations = {
     "status.label": "狀態",
     "status.completed": "已完成",
     "status.pending": "未完成",
+    "status.unreconciled": "未對帳",
+    "status.reconciled": "已對帳",
 
     // Navigation
     "nav.dashboard": "儀表板",
@@ -431,6 +441,12 @@ export const translations = {
     "bank.replaceMode": "取代",
     "bank.replaceModeDesc": "完全刪除舊資料，更新為新資料。",
     "bank.records": "筆",
+    "bank.filterDesc": "篩選要顯示的資料",
+    "bank.reconciliationStatus": "對帳狀態",
+    "bank.amountFilter": "金額類型",
+    "bank.positiveAmount": "入金（正數）",
+    "bank.negativeAmount": "出金（負數）",
+    "bank.clearFilter": "清除篩選",
 
     // Platform Transactions
     "platform.title": "平台交易",
@@ -644,6 +660,8 @@ export const translations = {
     "status.label": "Status",
     "status.completed": "Completed",
     "status.pending": "Pending",
+    "status.unreconciled": "Unreconciled",
+    "status.reconciled": "Reconciled",
 
     // Navigation
     "nav.dashboard": "Dashboard",
@@ -737,6 +755,12 @@ export const translations = {
     "bank.replaceMode": "Replace",
     "bank.replaceModeDesc": "Delete all existing data and replace with new data.",
     "bank.records": "records",
+    "bank.filterDesc": "Filter the data to display",
+    "bank.reconciliationStatus": "Reconciliation Status",
+    "bank.amountFilter": "Amount Type",
+    "bank.positiveAmount": "Income (Positive)",
+    "bank.negativeAmount": "Expense (Negative)",
+    "bank.clearFilter": "Clear Filter",
 
     // Platform Transactions
     "platform.title": "Platform Transactions",

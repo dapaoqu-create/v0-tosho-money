@@ -84,7 +84,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
   const { t, language } = useLanguage()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showUpdateDialog, setShowUpdateDialog] = useState(false)
-  const [showManualDialog, setShowManualDialog] = useState(false)
+  const [showFilterDialog, setShowFilterDialog] = useState(false)
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null)
   const [manualConfirmCode, setManualConfirmCode] = useState("")
   const [updateMode, setUpdateMode] = useState<"merge" | "replace">("merge")
@@ -103,7 +103,6 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     positiveAmount: false,
     negativeAmount: false,
   })
-  const [showFilterDialog, setShowFilterDialog] = useState(false)
 
   const [editMode, setEditMode] = useState<"confirmCode" | "transactionCode" | null>(null)
   const [editConfirmCodes, setEditConfirmCodes] = useState("")
@@ -419,7 +418,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       })
 
       if (res.ok) {
-        setShowManualDialog(false)
+        setShowFilterDialog(false)
         setManualConfirmCode("")
         setSelectedTxId(null)
         setEditMode(null)
@@ -447,7 +446,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       })
 
       if (res.ok) {
-        setShowManualDialog(false)
+        setShowFilterDialog(false)
         setEditTransactionCode("")
         setSelectedTxId(null)
         setEditMode(null)
@@ -470,7 +469,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     } else {
       setEditTransactionCode(tx?.transaction_code || "")
     }
-    setShowManualDialog(true)
+    setShowFilterDialog(true)
   }
 
   return (
@@ -734,45 +733,67 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
         </CardContent>
       </Card>
 
-      <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
+      <Dialog open={showFilterDialog} onOpenChange={setShowFilterDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editMode === "transactionCode" ? l.editTransactionCode : l.editConfirmCode}</DialogTitle>
-            <DialogDescription>
-              {editMode === "transactionCode" ? l.editTransactionCodeDesc : l.editConfirmCodeDesc}
-            </DialogDescription>
+            <DialogTitle>{l.filter}</DialogTitle>
+            <DialogDescription>{t("bank.filterDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {editMode === "transactionCode" ? (
-              <div className="space-y-2">
-                <Label>{l.transactionCode}</Label>
-                <Input
-                  value={editTransactionCode}
-                  onChange={(e) => setEditTransactionCode(e.target.value)}
-                  placeholder={l.editTransactionCodeDesc}
-                />
+            <div className="space-y-2">
+              <Label>{t("bank.reconciliationStatus")}</Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={filters.unreconciled ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilters((f) => ({ ...f, unreconciled: !f.unreconciled }))}
+                >
+                  {t("status.unreconciled")}
+                </Button>
+                <Button
+                  variant={filters.reconciled ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilters((f) => ({ ...f, reconciled: !f.reconciled }))}
+                >
+                  {t("status.reconciled")}
+                </Button>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <Label>{l.confirmationCode}</Label>
-                <Input
-                  value={manualConfirmCode}
-                  onChange={(e) => setManualConfirmCode(e.target.value)}
-                  placeholder={l.enterConfirmCode}
-                />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("bank.amountFilter")}</Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={filters.positiveAmount ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilters((f) => ({ ...f, positiveAmount: !f.positiveAmount }))}
+                >
+                  {t("bank.positiveAmount")}
+                </Button>
+                <Button
+                  variant={filters.negativeAmount ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilters((f) => ({ ...f, negativeAmount: !f.negativeAmount }))}
+                >
+                  {t("bank.negativeAmount")}
+                </Button>
               </div>
-            )}
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowManualDialog(false)}>
-              {t("cancel")}
-            </Button>
             <Button
-              onClick={editMode === "transactionCode" ? handleSaveTransactionCode : handleManualReconcile}
-              disabled={isSaving}
+              variant="outline"
+              onClick={() => {
+                setFilters({
+                  unreconciled: false,
+                  reconciled: false,
+                  positiveAmount: false,
+                  negativeAmount: false,
+                })
+              }}
             >
-              {isSaving ? t("loading") : t("confirm")}
+              {t("bank.clearFilter")}
             </Button>
+            <Button onClick={() => setShowFilterDialog(false)}>{t("confirm")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

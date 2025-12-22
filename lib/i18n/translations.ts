@@ -37,6 +37,7 @@ export const translations = {
 
     // Navigation
     "nav.dashboard": "ダッシュボード",
+    "nav.bankAccounts": "銀行口座",
     "nav.bankTransactions": "銀行取引",
     "nav.platformTransactions": "プラットフォーム取引",
     "nav.import": "CSVインポート",
@@ -93,6 +94,23 @@ export const translations = {
     "dashboard.recentTransactions": "最近の取引",
     "dashboard.revenue": "収入",
     "dashboard.expenses": "支出",
+
+    // Bank Accounts
+    "bankAccounts.title": "銀行口座管理",
+    "bankAccounts.subtitle": "登録されている銀行口座を管理",
+    "bankAccounts.totalBanks": "登録銀行数",
+    "bankAccounts.totalBalance": "合計残高",
+    "bankAccounts.addBank": "銀行を追加",
+    "bankAccounts.editBank": "銀行名を編集",
+    "bankAccounts.deleteConfirm": "銀行を削除しますか？",
+    "bankAccounts.deleteConfirmDesc": "関連するすべての取引データも削除されます。この操作は取り消せません。",
+    "bankAccounts.latestBalance": "最新残高",
+    "bankAccounts.lastUpdated": "最終更新",
+    "bankAccounts.transactionCount": "取引件数",
+    "bankAccounts.noAccounts": "銀行が登録されていません",
+    "bankAccounts.linkedAccounts": "連携中の銀行口座",
+    "bankAccounts.allBanksTotal": "全銀行口座の合計",
+    "bankAccounts.totalTransactionsAll": "全銀行の取引合計",
 
     // Bank Transactions
     "bank.title": "銀行取引",
@@ -360,6 +378,7 @@ export const translations = {
 
     // Navigation
     "nav.dashboard": "儀表板",
+    "nav.bankAccounts": "銀行帳戶",
     "nav.bankTransactions": "銀行交易",
     "nav.platformTransactions": "平台交易",
     "nav.import": "CSV 匯入",
@@ -416,6 +435,23 @@ export const translations = {
     "dashboard.recentTransactions": "最近交易",
     "dashboard.revenue": "收入",
     "dashboard.expenses": "支出",
+
+    // Bank Accounts
+    "bankAccounts.title": "銀行帳戶管理",
+    "bankAccounts.subtitle": "管理已登記的銀行帳戶",
+    "bankAccounts.totalBanks": "登記銀行數",
+    "bankAccounts.totalBalance": "總餘額",
+    "bankAccounts.addBank": "新增銀行",
+    "bankAccounts.editBank": "編輯銀行名稱",
+    "bankAccounts.deleteConfirm": "確定要刪除銀行嗎？",
+    "bankAccounts.deleteConfirmDesc": "相關的所有交易資料也會被刪除。此操作無法復原。",
+    "bankAccounts.latestBalance": "最新餘額",
+    "bankAccounts.lastUpdated": "最後更新",
+    "bankAccounts.transactionCount": "交易筆數",
+    "bankAccounts.noAccounts": "尚未登記銀行",
+    "bankAccounts.linkedAccounts": "已連結的銀行帳戶",
+    "bankAccounts.allBanksTotal": "所有銀行帳戶總計",
+    "bankAccounts.totalTransactionsAll": "所有銀行交易總計",
 
     // Bank Transactions
     "bank.title": "銀行交易",
@@ -566,7 +602,7 @@ export const translations = {
     "confirmCheck.date": "日期",
     "confirmCheck.guest": "房客",
     "confirmCheck.amount": "金額",
-    "confirmCheck.allMatched": "所有確認碼皆已在 igohotel 登記",
+    "confirmCheck.allMatched": "All confirmation codes are registered in igohotel",
 
     // Reports
     "reports.title": "報表",
@@ -682,6 +718,7 @@ export const translations = {
 
     // Navigation
     "nav.dashboard": "Dashboard",
+    "nav.bankAccounts": "Bank Accounts",
     "nav.bankTransactions": "Bank Transactions",
     "nav.platformTransactions": "Platform Transactions",
     "nav.import": "CSV Import",
@@ -738,6 +775,24 @@ export const translations = {
     "dashboard.recentTransactions": "Recent Transactions",
     "dashboard.revenue": "Revenue",
     "dashboard.expenses": "Expenses",
+
+    // Bank Accounts
+    "bankAccounts.title": "Bank Account Management",
+    "bankAccounts.subtitle": "Manage registered bank accounts",
+    "bankAccounts.totalBanks": "Total Banks",
+    "bankAccounts.totalBalance": "Total Balance",
+    "bankAccounts.addBank": "Add Bank",
+    "bankAccounts.editBank": "Edit Bank Name",
+    "bankAccounts.deleteConfirm": "Are you sure you want to delete this bank?",
+    "bankAccounts.deleteConfirmDesc":
+      "All related transaction data will also be deleted. This action cannot be undone.",
+    "bankAccounts.latestBalance": "Latest Balance",
+    "bankAccounts.lastUpdated": "Last Updated",
+    "bankAccounts.transactionCount": "Transaction Count",
+    "bankAccounts.noAccounts": "No banks registered",
+    "bankAccounts.linkedAccounts": "Linked Bank Accounts",
+    "bankAccounts.allBanksTotal": "Total for All Bank Accounts",
+    "bankAccounts.totalTransactionsAll": "Total Transactions for All Banks",
 
     // Bank Transactions
     "bank.title": "Bank Transactions",

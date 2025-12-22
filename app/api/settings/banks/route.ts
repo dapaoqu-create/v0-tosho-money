@@ -41,3 +41,23 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "銀行の削除に失敗しました" }, { status: 500 })
   }
 }
+
+export async function PATCH(request: Request) {
+  try {
+    const { id, name } = await request.json()
+
+    if (!id || !name) {
+      return NextResponse.json({ error: "IDと銀行名は必須です" }, { status: 400 })
+    }
+
+    const supabase = await createClient()
+    const { data, error } = await supabase.from("banks").update({ name }).eq("id", id).select().single()
+
+    if (error) throw error
+
+    return NextResponse.json({ success: true, bank: data })
+  } catch (error) {
+    console.error("Update bank error:", error)
+    return NextResponse.json({ error: "銀行の更新に失敗しました" }, { status: 500 })
+  }
+}

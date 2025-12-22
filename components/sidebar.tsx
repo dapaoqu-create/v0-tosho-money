@@ -18,6 +18,7 @@ import {
   CreditCard,
   CheckCircle2,
   StickyNote,
+  Landmark,
 } from "lucide-react"
 
 export function Sidebar() {
@@ -27,6 +28,7 @@ export function Sidebar() {
 
   const navigation = [
     { name: t("nav.dashboard"), href: "/dashboard", icon: LayoutDashboard },
+    { name: t("nav.bankAccounts"), href: "/dashboard/bank-accounts", icon: Landmark },
     { name: t("nav.bankTransactions"), href: "/dashboard/bank-transactions", icon: CreditCard },
     { name: t("nav.platformTransactions"), href: "/dashboard/platform-transactions", icon: Building2 },
     { name: t("nav.import"), href: "/dashboard/import", icon: Upload },

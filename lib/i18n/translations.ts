@@ -28,6 +28,11 @@ export const translations = {
     selected: "選択済み",
     confirmationCodes: "確認コード",
 
+    // Status
+    "status.label": "状態",
+    "status.completed": "完了",
+    "status.pending": "未完了",
+
     // Navigation
     "nav.dashboard": "ダッシュボード",
     "nav.bankTransactions": "銀行取引",
@@ -302,6 +307,11 @@ export const translations = {
     selected: "已選取",
     confirmationCodes: "確認碼",
 
+    // Status
+    "status.label": "狀態",
+    "status.completed": "已完成",
+    "status.pending": "未完成",
+
     // Navigation
     "nav.dashboard": "儀表板",
     "nav.bankTransactions": "銀行交易",
@@ -573,6 +583,11 @@ export const translations = {
     files: "Files",
     selected: "Selected",
     confirmationCodes: "Confirmation Codes",
+
+    // Status
+    "status.label": "Status",
+    "status.completed": "Completed",
+    "status.pending": "Pending",
 
     // Navigation
     "nav.dashboard": "Dashboard",

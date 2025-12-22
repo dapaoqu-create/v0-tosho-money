@@ -86,6 +86,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showUpdateDialog, setShowUpdateDialog] = useState(false)
   const [showFilterDialog, setShowFilterDialog] = useState(false)
+  const [showManualDialog, setShowManualDialog] = useState(false)
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null)
   const [manualConfirmCode, setManualConfirmCode] = useState("")
   const [updateMode, setUpdateMode] = useState<"merge" | "replace">("merge")
@@ -473,7 +474,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     } else {
       setEditTransactionCode(tx?.transaction_code || "")
     }
-    setShowFilterDialog(true)
+    setShowManualDialog(true)
   }
 
   const handleConfirmationCodeClick = async (code: string, e: React.MouseEvent) => {
@@ -842,6 +843,56 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
               {t("bank.clearFilter")}
             </Button>
             <Button onClick={() => setShowFilterDialog(false)}>{t("confirm")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editMode === "confirmCode" ? t("bank.enterConfirmCode") : t("bank.editTransactionCode")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {editMode === "confirmCode" ? (
+              <div className="space-y-2">
+                <Label>{t("bank.confirmationCode")}</Label>
+                <Input
+                  value={manualConfirmCode}
+                  onChange={(e) => setManualConfirmCode(e.target.value)}
+                  placeholder={t("bank.enterConfirmCodePlaceholder")}
+                />
+                <p className="text-xs text-muted-foreground">{t("bank.multipleCodesTip")}</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>{t("bank.transactionCode")}</Label>
+                <Input
+                  value={editTransactionCode}
+                  onChange={(e) => setEditTransactionCode(e.target.value)}
+                  placeholder={t("bank.enterTransactionCodePlaceholder")}
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowManualDialog(false)}>
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                if (editMode === "confirmCode") {
+                  handleManualReconcile()
+                } else {
+                  handleSaveTransactionCode()
+                }
+                setShowManualDialog(false)
+              }}
+              disabled={isSaving}
+            >
+              {isSaving ? t("loading") : t("confirm")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

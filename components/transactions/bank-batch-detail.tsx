@@ -42,6 +42,7 @@ import {
   X,
   Filter,
   Search,
+  ExternalLink,
 } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useLanguage } from "@/lib/i18n/context"
@@ -270,6 +271,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       editTransactionCode: "編輯交易編碼",
       editTransactionCodeDesc: "輸入銀行交易編碼",
       transactionCode: "交易編碼",
+      clickToOpenPlatform: "プラットフォームのCSVを開く",
     },
     "zh-TW": {
       itemNo: "項次",
@@ -298,6 +300,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       editTransactionCode: "編輯交易編碼",
       editTransactionCodeDesc: "輸入銀行交易編碼",
       transactionCode: "交易編碼",
+      clickToOpenPlatform: "點擊打開平台CSV",
     },
     en: {
       itemNo: "No.",
@@ -326,6 +329,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       editTransactionCode: "Edit Transaction Code",
       editTransactionCodeDesc: "Enter bank transaction code",
       transactionCode: "Transaction Code",
+      clickToOpenPlatform: "Click to open platform CSV",
     },
   }
 
@@ -470,6 +474,21 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       setEditTransactionCode(tx?.transaction_code || "")
     }
     setShowFilterDialog(true)
+  }
+
+  const handleConfirmationCodeClick = async (code: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      const response = await fetch(`/api/platform-transactions/by-confirmation-code?code=${encodeURIComponent(code)}`)
+      if (response.ok) {
+        const { batchId } = await response.json()
+        if (batchId) {
+          window.open(`/dashboard/platform-transactions/${batchId}?highlight=${encodeURIComponent(code)}`, "_blank")
+        }
+      }
+    } catch (error) {
+      console.error("Failed to find platform transaction:", error)
+    }
   }
 
   return (
@@ -651,17 +670,42 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
                       </TableCell>
                       <TableCell>
                         {tx.matched_confirmation_codes?.length ? (
-                          <div
-                            className="flex flex-wrap gap-1 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
-                            onClick={() => openManualDialog(tx.id, "confirmCode")}
-                          >
-                            {tx.matched_confirmation_codes.map((code, i) => (
-                              <Badge key={i} variant="secondary" className="font-mono text-xs">
-                                {code}
-                              </Badge>
-                            ))}
-                            <Edit2 className="h-3 w-3 text-muted-foreground ml-1" />
-                          </div>
+                          tx.reconciliation_status === "reconciled" ? (
+                            <div className="flex flex-wrap gap-1">
+                              {tx.matched_confirmation_codes.map((code, i) => (
+                                <Badge
+                                  key={i}
+                                  variant="secondary"
+                                  className="font-mono text-xs cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                                  onClick={(e) => handleConfirmationCodeClick(code, e)}
+                                  title={l.clickToOpenPlatform}
+                                >
+                                  {code}
+                                  <ExternalLink className="h-3 w-3 ml-1" />
+                                </Badge>
+                              ))}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => openManualDialog(tx.id, "confirmCode")}
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div
+                              className="flex flex-wrap gap-1 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
+                              onClick={() => openManualDialog(tx.id, "confirmCode")}
+                            >
+                              {tx.matched_confirmation_codes.map((code, i) => (
+                                <Badge key={i} variant="secondary" className="font-mono text-xs">
+                                  {code}
+                                </Badge>
+                              ))}
+                              <Edit2 className="h-3 w-3 text-muted-foreground ml-1" />
+                            </div>
+                          )
                         ) : (
                           <Button
                             variant="ghost"

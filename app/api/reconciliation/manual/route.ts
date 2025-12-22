@@ -42,17 +42,14 @@ export async function POST(request: NextRequest) {
 
       if (platformTxs && platformTxs.length > 0) {
         for (const platformTx of platformTxs) {
-          // 更新預訂行
           await supabase
             .from("platform_transactions")
             .update({
               reconciliation_status: "reconciled",
-              matched_bank_transaction_code: bankTx?.transaction_code || null,
               reconciled: true,
             })
             .eq("id", platformTx.id)
 
-          // Payout 行是同一批次中，在預訂行之前的最近一個 Payout
           const { data: payoutTx } = await supabase
             .from("platform_transactions")
             .select("*")
@@ -96,17 +93,16 @@ export async function POST(request: NextRequest) {
         .eq("id", transactionId)
         .single()
 
-      // 更新平台交易
-      await supabase
-        .from("platform_transactions")
-        .update({
-          reconciliation_status: "reconciled",
-          matched_bank_transaction_code: transactionCode,
-          reconciled: true,
-        })
-        .eq("id", transactionId)
-
       if (platformTx?.type === "Payout") {
+        await supabase
+          .from("platform_transactions")
+          .update({
+            reconciliation_status: "reconciled",
+            matched_bank_transaction_code: transactionCode,
+            reconciled: true,
+          })
+          .eq("id", transactionId)
+
         // 查找此 Payout 後面的預訂行（直到下一個 Payout）
         const { data: nextPayout } = await supabase
           .from("platform_transactions")
@@ -118,12 +114,10 @@ export async function POST(request: NextRequest) {
           .limit(1)
           .single()
 
-        // 更新這之間的所有預訂行
         let query = supabase
           .from("platform_transactions")
           .update({
             reconciliation_status: "reconciled",
-            matched_bank_transaction_code: transactionCode,
             reconciled: true,
           })
           .eq("batch_id", platformTx.batch_id)
@@ -135,18 +129,66 @@ export async function POST(request: NextRequest) {
         }
 
         await query
-      } else if (platformTx) {
+
+        // 收集確認碼用於更新銀行交易
+        let confirmationCodesQuery = supabase
+          .from("platform_transactions")
+          .select("confirmation_code")
+          .eq("batch_id", platformTx.batch_id)
+          .neq("type", "Payout")
+          .gt("_row_index", platformTx._row_index)
+
+        if (nextPayout) {
+          confirmationCodesQuery = confirmationCodesQuery.lt("_row_index", nextPayout._row_index)
+        }
+
+        const { data: relatedBookings } = await confirmationCodesQuery
+        const confirmationCodes =
+          relatedBookings?.map((b) => b.confirmation_code).filter((code): code is string => !!code) || []
+
+        // 更新對應的銀行交易
+        const { data: bankTxs } = await supabase
+          .from("bank_transactions")
+          .select("*")
+          .eq("transaction_code", transactionCode)
+
+        if (bankTxs && bankTxs.length > 0) {
+          for (const bankTx of bankTxs) {
+            const existingCodes = bankTx.matched_confirmation_codes || []
+            const newCodes = [...new Set([...existingCodes, ...confirmationCodes])]
+
+            await supabase
+              .from("bank_transactions")
+              .update({
+                reconciliation_status: "reconciled",
+                matched_confirmation_codes: newCodes,
+                reconciled: true,
+              })
+              .eq("id", bankTx.id)
+          }
+
+          // 記錄手動對賬
+          await supabase.from("reconciliation_matches").insert({
+            bank_transaction_id: bankTxs[0].id,
+            platform_transaction_ids: [transactionId],
+            confirmation_codes: confirmationCodes,
+            is_manual: true,
+          })
+        }
+      } else {
+        // 如果是預訂行被選中，找到對應的 Payout 行
         const { data: payoutTx } = await supabase
           .from("platform_transactions")
           .select("*")
-          .eq("batch_id", platformTx.batch_id)
+          .eq("batch_id", platformTx?.batch_id)
           .eq("type", "Payout")
-          .lt("_row_index", platformTx._row_index)
+          .lt("_row_index", platformTx?._row_index)
           .order("_row_index", { ascending: false })
           .limit(1)
           .single()
 
         if (payoutTx) {
+          // 更新 Payout 行的交易編碼
           await supabase
             .from("platform_transactions")
             .update({
@@ -156,38 +198,47 @@ export async function POST(request: NextRequest) {
             })
             .eq("id", payoutTx.id)
         }
-      }
 
-      // 更新對應的銀行交易
-      const { data: bankTxs } = await supabase
-        .from("bank_transactions")
-        .select("*")
-        .eq("transaction_code", transactionCode)
+        // 更新當前預訂行的對賬狀態
+        await supabase
+          .from("platform_transactions")
+          .update({
+            reconciliation_status: "reconciled",
+            reconciled: true,
+          })
+          .eq("id", transactionId)
 
-      if (bankTxs && bankTxs.length > 0) {
-        for (const bankTx of bankTxs) {
-          const existingCodes = bankTx.matched_confirmation_codes || []
-          const newCodes = platformTx?.confirmation_code
-            ? [...new Set([...existingCodes, platformTx.confirmation_code])]
-            : existingCodes
+        // 更新對應的銀行交易
+        const { data: bankTxs } = await supabase
+          .from("bank_transactions")
+          .select("*")
+          .eq("transaction_code", transactionCode)
 
-          await supabase
-            .from("bank_transactions")
-            .update({
-              reconciliation_status: "reconciled",
-              matched_confirmation_codes: newCodes,
-              reconciled: true,
-            })
-            .eq("id", bankTx.id)
+        if (bankTxs && bankTxs.length > 0) {
+          for (const bankTx of bankTxs) {
+            const existingCodes = bankTx.matched_confirmation_codes || []
+            const newCodes = platformTx?.confirmation_code
+              ? [...new Set([...existingCodes, platformTx.confirmation_code])]
+              : existingCodes
+
+            await supabase
+              .from("bank_transactions")
+              .update({
+                reconciliation_status: "reconciled",
+                matched_confirmation_codes: newCodes,
+                reconciled: true,
+              })
+              .eq("id", bankTx.id)
+          }
+
+          // 記錄手動對賬
+          await supabase.from("reconciliation_matches").insert({
+            bank_transaction_id: bankTxs[0].id,
+            platform_transaction_ids: [transactionId],
+            confirmation_codes: platformTx?.confirmation_code ? [platformTx.confirmation_code] : [],
+            is_manual: true,
+          })
         }
-
-        // 記錄手動對賬
-        await supabase.from("reconciliation_matches").insert({
-          bank_transaction_id: bankTxs[0].id,
-          platform_transaction_ids: [transactionId],
-          confirmation_codes: platformTx?.confirmation_code ? [platformTx.confirmation_code] : [],
-          is_manual: true,
-        })
       }
     }
 

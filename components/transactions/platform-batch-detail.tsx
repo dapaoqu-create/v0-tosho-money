@@ -447,7 +447,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                         )}
                       </TableCell>
                       <TableCell>
-                        {tx.matched_bank_transaction_code ? (
+                        {tx.type === "Payout" && tx.matched_bank_transaction_code ? (
                           <Badge variant="secondary" className="font-mono text-xs">
                             {tx.matched_bank_transaction_code}
                           </Badge>

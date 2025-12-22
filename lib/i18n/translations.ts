@@ -132,6 +132,10 @@ export const translations = {
     "bank.positiveAmount": "入金（プラス）",
     "bank.negativeAmount": "出金（マイナス）",
     "bank.clearFilter": "フィルタをクリア",
+    "bank.enterConfirmCode": "確認コードを入力",
+    "bank.confirmationCode": "確認コード",
+    "bank.multipleCodesTip": "複数の確認コードはカンマで区切ってください",
+    "bank.enterTransactionCode": "取引コードを入力",
 
     // Platform Transactions
     "platform.title": "プラットフォーム取引",
@@ -168,6 +172,10 @@ export const translations = {
     "platform.replaceMode": "置換",
     "platform.replaceModeDesc": "既存のデータをすべて削除し、新しいデータで置き換えます。",
     "platform.records": "件",
+    "platform.enterConfirmCode": "確認コードを入力",
+    "platform.confirmationCode": "確認コード",
+    "platform.multipleCodesTip": "複数の確認コードはカンマで区切ってください",
+    "platform.enterTransactionCode": "取引コードを入力",
 
     // CSV Import
     "import.title": "CSVインポート",
@@ -447,6 +455,10 @@ export const translations = {
     "bank.positiveAmount": "入金（正數）",
     "bank.negativeAmount": "出金（負數）",
     "bank.clearFilter": "清除篩選",
+    "bank.enterConfirmCode": "輸入確認碼",
+    "bank.confirmationCode": "確認碼",
+    "bank.multipleCodesTip": "多個確認碼請用逗號分隔",
+    "bank.enterTransactionCode": "輸入交易編碼",
 
     // Platform Transactions
     "platform.title": "平台交易",
@@ -483,6 +495,10 @@ export const translations = {
     "platform.replaceMode": "取代",
     "platform.replaceModeDesc": "完全刪除舊資料，更新為新資料。",
     "platform.records": "筆",
+    "platform.enterConfirmCode": "輸入確認碼",
+    "platform.confirmationCode": "確認碼",
+    "platform.multipleCodesTip": "多個確認碼請用逗號分隔",
+    "platform.enterTransactionCode": "輸入交易編碼",
 
     // CSV Import
     "import.title": "CSV 匯入",
@@ -531,20 +547,21 @@ export const translations = {
 
     // Confirmation Check
     "confirmCheck.title": "確認碼檢查",
-    "confirmCheck.subtitle": "比對 Airbnb 確認碼與 igohotel 旅客名簿",
+    "confirmCheck.subtitle": "比對 Airbnb codes with igohotel guest registry",
     "confirmCheck.selectBatches": "選擇要檢查的 CSV",
     "confirmCheck.selectBatchesDesc": "選擇多個平台 CSV 一起檢查",
-    "confirmCheck.noBatches": "尚無平台 CSV",
-    "confirmCheck.importFirst": "請先匯入 CSV",
-    "confirmCheck.checking": "檢查中...",
+    "confirmCheck.noBatches": "No platform CSV available",
+    "confirmCheck.importFirst": "Please import CSV first",
+    "confirmCheck.checking": "Checking...",
     "confirmCheck.startCheck": "開始檢查",
     "confirmCheck.results": "檢查結果",
     "confirmCheck.exportNotFound": "匯出未登記清單",
     "confirmCheck.apiError": "API 發生錯誤",
     "confirmCheck.totalCodes": "總確認碼數",
-    "confirmCheck.matched": "igohotel 已登記",
-    "confirmCheck.notFound": "未在 igohotel 登記",
-    "confirmCheck.notFoundDesc": "以下確認碼存在於 Airbnb CSV，但尚未在 igohotel 旅客名簿登記",
+    "confirmCheck.matched": "Registered in igohotel",
+    "confirmCheck.notFound": "Not in igohotel",
+    "confirmCheck.notFoundDesc":
+      "The following codes exist in Airbnb CSV but are not registered in igohotel guest registry",
     "confirmCheck.confirmationCode": "確認碼",
     "confirmCheck.date": "日期",
     "confirmCheck.guest": "房客",
@@ -761,6 +778,10 @@ export const translations = {
     "bank.positiveAmount": "Income (Positive)",
     "bank.negativeAmount": "Expense (Negative)",
     "bank.clearFilter": "Clear Filter",
+    "bank.enterConfirmCode": "Enter Confirmation Code",
+    "bank.confirmationCode": "Confirmation Code",
+    "bank.multipleCodesTip": "Separate multiple codes with commas",
+    "bank.enterTransactionCode": "Enter Transaction Code",
 
     // Platform Transactions
     "platform.title": "Platform Transactions",
@@ -798,6 +819,10 @@ export const translations = {
     "platform.replaceMode": "Replace",
     "platform.replaceModeDesc": "Delete all existing data and replace with new data.",
     "platform.records": "records",
+    "platform.enterConfirmCode": "Enter Confirmation Code",
+    "platform.confirmationCode": "Confirmation Code",
+    "platform.multipleCodesTip": "Separate multiple codes with commas",
+    "platform.enterTransactionCode": "Enter Transaction Code",
 
     // CSV Import
     "import.title": "CSV Import",

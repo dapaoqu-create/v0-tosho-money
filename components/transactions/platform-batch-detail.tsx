@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -108,6 +108,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
 
   const [currentPage, setCurrentPage] = useState(1)
   const [highlightCode, setHighlightCode] = useState<string | null>(null)
+  const highlightRowRef = useRef<HTMLTableRowElement>(null)
 
   const [editMode, setEditMode] = useState<"transactionCode" | "confirmCode" | null>(null)
   const [editConfirmCode, setEditConfirmCode] = useState("")
@@ -396,14 +397,25 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
         }
       }
 
-      // 3秒後清除高亮
       const timer = setTimeout(() => {
         setHighlightCode(null)
-      }, 5000)
+      }, 20000)
 
       return () => clearTimeout(timer)
     }
   }, [searchParams, transactions, totalPages])
+
+  useEffect(() => {
+    if (highlightCode && highlightRowRef.current) {
+      // 延遲一點時間確保頁面已渲染
+      setTimeout(() => {
+        highlightRowRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        })
+      }, 100)
+    }
+  }, [highlightCode, currentPage])
 
   return (
     <div className="space-y-6">
@@ -502,6 +514,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                   return (
                     <TableRow
                       key={tx.id}
+                      ref={shouldHighlight ? highlightRowRef : null}
                       className={shouldHighlight ? "bg-yellow-100 dark:bg-yellow-900/30 animate-pulse" : ""}
                     >
                       <TableCell className="sticky left-0 bg-background z-10 font-medium">{displayIndex}</TableCell>

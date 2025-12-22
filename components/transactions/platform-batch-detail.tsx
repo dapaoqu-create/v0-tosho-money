@@ -519,28 +519,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
 
                         // 確認碼欄位特殊處理
                         if (header === "確認碼" && !isPayout) {
-                          return (
-                            <TableCell key={header}>
-                              {cellValue !== "-" ? (
-                                <div
-                                  className="flex items-center gap-1 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
-                                  onClick={() => openManualDialog(tx.id, "confirmCode")}
-                                >
-                                  <span>{cellValue}</span>
-                                  <Edit2 className="h-3 w-3 text-muted-foreground" />
-                                </div>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 text-muted-foreground"
-                                  onClick={() => openManualDialog(tx.id, "confirmCode")}
-                                >
-                                  <Edit2 className="h-3 w-3 mr-1" />-
-                                </Button>
-                              )}
-                            </TableCell>
-                          )
+                          return <TableCell key={header}>{cellValue}</TableCell>
                         }
 
                         return <TableCell key={header}>{cellValue}</TableCell>

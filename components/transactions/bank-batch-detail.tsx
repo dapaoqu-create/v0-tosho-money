@@ -481,9 +481,13 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     try {
       const response = await fetch(`/api/platform-transactions/by-confirmation-code?code=${encodeURIComponent(code)}`)
       if (response.ok) {
-        const { batchId } = await response.json()
+        const { batchId, rowIndex } = await response.json()
         if (batchId) {
-          window.open(`/dashboard/platform-transactions/${batchId}?highlight=${encodeURIComponent(code)}`, "_blank")
+          let url = `/dashboard/platform-transactions/${batchId}?highlight=${encodeURIComponent(code)}`
+          if (rowIndex) {
+            url += `&row=${rowIndex}`
+          }
+          window.open(url, "_blank")
         }
       }
     } catch (error) {

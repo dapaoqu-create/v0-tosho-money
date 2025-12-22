@@ -37,7 +37,11 @@ export async function GET(request: Request) {
           })
 
           if (found) {
-            return NextResponse.json({ batchId: found.batch_id })
+            const rowIndex = found.raw_data?._row_index || found.raw_data?.["_row_index"]
+            return NextResponse.json({
+              batchId: found.batch_id,
+              rowIndex: rowIndex ? Number.parseInt(rowIndex) : null,
+            })
           }
         }
       }
@@ -46,5 +50,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 
-  return NextResponse.json({ batchId: data.batch_id })
+  const rowIndex = data.raw_data?._row_index || data.raw_data?.["_row_index"]
+  return NextResponse.json({
+    batchId: data.batch_id,
+    rowIndex: rowIndex ? Number.parseInt(rowIndex) : null,
+  })
 }

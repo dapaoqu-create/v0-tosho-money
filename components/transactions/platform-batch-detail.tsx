@@ -1,8 +1,8 @@
 "use client"
 
 import type React from "react"
-import { useState, useCallback, useMemo } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useCallback, useMemo, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -92,6 +92,7 @@ const ITEMS_PER_PAGE = 200
 
 export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetailProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { t, language } = useLanguage()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showUpdateDialog, setShowUpdateDialog] = useState(false)
@@ -106,6 +107,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const [currentPage, setCurrentPage] = useState(1)
+  const [highlightCode, setHighlightCode] = useState<string | null>(null)
 
   const [editMode, setEditMode] = useState<"transactionCode" | "confirmCode" | null>(null)
   const [editConfirmCode, setEditConfirmCode] = useState("")
@@ -368,6 +370,41 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
     return { confirmationCodeCount: confirmationCodes, payoutCount: payouts }
   }, [transactions])
 
+  useEffect(() => {
+    const highlight = searchParams.get("highlight")
+    const rowIndex = searchParams.get("row")
+
+    if (highlight) {
+      setHighlightCode(highlight)
+
+      // 如果有行索引，計算頁碼並跳轉
+      if (rowIndex) {
+        const row = Number.parseInt(rowIndex)
+        const targetPage = Math.ceil(row / ITEMS_PER_PAGE)
+        if (targetPage > 0 && targetPage <= totalPages) {
+          setCurrentPage(targetPage)
+        }
+      } else {
+        // 沒有行索引時，搜尋確認碼所在的位置
+        const txIndex = transactions.findIndex((tx) => {
+          const confirmCode = tx.confirmation_code || tx.raw_data?.["確認碼"]
+          return confirmCode === highlight
+        })
+        if (txIndex >= 0) {
+          const targetPage = Math.ceil((txIndex + 1) / ITEMS_PER_PAGE)
+          setCurrentPage(targetPage)
+        }
+      }
+
+      // 3秒後清除高亮
+      const timer = setTimeout(() => {
+        setHighlightCode(null)
+      }, 5000)
+
+      return () => clearTimeout(timer)
+    }
+  }, [searchParams, transactions, totalPages])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -456,14 +493,18 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedTransactions.map((tx, index) => {
-                  const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1
-                  const isPayout = tx.raw_data?.["類型"] === "Payout" || tx.type === "Payout"
-                  const hasConfirmCode = tx.raw_data?.["確認碼"] || tx.confirmation_code
+                {paginatedTransactions.map((tx, idx) => {
+                  const displayIndex = (currentPage - 1) * ITEMS_PER_PAGE + idx + 1
+                  const isReconciled = tx.reconciliation_status === "reconciled"
+                  const txConfirmCode = tx.confirmation_code || tx.raw_data?.["確認碼"]
+                  const shouldHighlight = highlightCode && txConfirmCode === highlightCode
 
                   return (
-                    <TableRow key={tx.id}>
-                      <TableCell className="sticky left-0 bg-background z-10 font-medium">{globalIndex}</TableCell>
+                    <TableRow
+                      key={tx.id}
+                      className={shouldHighlight ? "bg-yellow-100 dark:bg-yellow-900/30 animate-pulse" : ""}
+                    >
+                      <TableCell className="sticky left-0 bg-background z-10 font-medium">{displayIndex}</TableCell>
                       <TableCell>
                         {shouldShowReconcileStatus(tx) ? (
                           tx.matched_bank_transaction_code ? (
@@ -489,7 +530,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                         )}
                       </TableCell>
                       <TableCell>
-                        {isPayout ? (
+                        {shouldShowReconcileStatus(tx) ? (
                           tx.matched_bank_transaction_code ? (
                             <div
                               className="flex items-center gap-1 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
@@ -518,7 +559,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                         const cellValue = tx.raw_data?.[header] ?? "-"
 
                         // 確認碼欄位特殊處理
-                        if (header === "確認碼" && !isPayout) {
+                        if (header === "確認碼" && !shouldShowReconcileStatus(tx)) {
                           return <TableCell key={header}>{cellValue}</TableCell>
                         }
 

@@ -29,15 +29,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   ArrowLeft,
   Upload,
   Trash2,
-  FileSpreadsheet,
   Check,
-  AlertCircle,
   Edit2,
   ChevronLeft,
   ChevronRight,
@@ -107,6 +104,10 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     negativeAmount: false,
   })
   const [showFilterDialog, setShowFilterDialog] = useState(false)
+
+  const [editMode, setEditMode] = useState<"confirmCode" | "transactionCode" | null>(null)
+  const [editConfirmCodes, setEditConfirmCodes] = useState("")
+  const [editTransactionCode, setEditTransactionCode] = useState("")
 
   const csvHeaders =
     transactions.length > 0 && transactions[0].raw_data
@@ -265,6 +266,11 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       positiveAmount: "入出金(円)正數",
       negativeAmount: "入出金(円)負數",
       activeFilters: "個篩選",
+      editConfirmCode: "編輯確認碼",
+      editConfirmCodeDesc: "輸入訂單確認碼（多個用逗號分隔）",
+      editTransactionCode: "編輯交易編碼",
+      editTransactionCodeDesc: "輸入銀行交易編碼",
+      transactionCode: "交易編碼",
     },
     "zh-TW": {
       itemNo: "項次",
@@ -288,6 +294,11 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       positiveAmount: "入出金(円)正數",
       negativeAmount: "入出金(円)負數",
       activeFilters: "個篩選",
+      editConfirmCode: "編輯確認碼",
+      editConfirmCodeDesc: "輸入訂單確認碼（多個用逗號分隔）",
+      editTransactionCode: "編輯交易編碼",
+      editTransactionCodeDesc: "輸入銀行交易編碼",
+      transactionCode: "交易編碼",
     },
     en: {
       itemNo: "No.",
@@ -311,6 +322,11 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
       positiveAmount: "Positive Amount",
       negativeAmount: "Negative Amount",
       activeFilters: "filters",
+      editConfirmCode: "Edit Confirmation Code",
+      editConfirmCodeDesc: "Enter confirmation codes (separate multiple with comma)",
+      editTransactionCode: "Edit Transaction Code",
+      editTransactionCodeDesc: "Enter bank transaction code",
+      transactionCode: "Transaction Code",
     },
   }
 
@@ -406,6 +422,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
         setShowManualDialog(false)
         setManualConfirmCode("")
         setSelectedTxId(null)
+        setEditMode(null)
         router.refresh()
       }
     } catch (error) {
@@ -415,9 +432,44 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
     }
   }
 
-  const openManualDialog = (txId: string) => {
+  const handleSaveTransactionCode = async () => {
+    if (!selectedTxId) return
+
+    setIsSaving(true)
+    try {
+      const res = await fetch("/api/bank-transactions/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transactionId: selectedTxId,
+          transactionCode: editTransactionCode.trim() || null,
+        }),
+      })
+
+      if (res.ok) {
+        setShowManualDialog(false)
+        setEditTransactionCode("")
+        setSelectedTxId(null)
+        setEditMode(null)
+        router.refresh()
+      }
+    } catch (error) {
+      console.error("Save transaction code error:", error)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const openManualDialog = (txId: string, mode: "confirmCode" | "transactionCode" = "confirmCode") => {
+    const tx = transactions.find((t) => t.id === txId)
     setSelectedTxId(txId)
-    setManualConfirmCode("")
+    setEditMode(mode)
+
+    if (mode === "confirmCode") {
+      setManualConfirmCode(tx?.matched_confirmation_codes?.join(", ") || "")
+    } else {
+      setEditTransactionCode(tx?.transaction_code || "")
+    }
     setShowManualDialog(true)
   }
 
@@ -562,7 +614,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
                   <TableHead className="min-w-[60px]">{l.itemNo}</TableHead>
                   <TableHead className="min-w-[100px]">{l.reconcileStatus}</TableHead>
                   <TableHead className="min-w-[200px]">{l.confirmationCode}</TableHead>
-                  <TableHead className="min-w-[120px]">{t("bank.transactionCode")}</TableHead>
+                  <TableHead className="min-w-[120px]">{l.transactionCode}</TableHead>
                   {csvHeaders.map((header) => (
                     <TableHead key={header}>{header}</TableHead>
                   ))}
@@ -591,7 +643,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
                               variant="ghost"
                               size="icon"
                               className="h-6 w-6"
-                              onClick={() => openManualDialog(tx.id)}
+                              onClick={() => openManualDialog(tx.id, "confirmCode")}
                             >
                               <Edit2 className="h-3 w-3" />
                             </Button>
@@ -600,18 +652,49 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
                       </TableCell>
                       <TableCell>
                         {tx.matched_confirmation_codes?.length ? (
-                          <div className="flex flex-wrap gap-1">
+                          <div
+                            className="flex flex-wrap gap-1 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
+                            onClick={() => openManualDialog(tx.id, "confirmCode")}
+                          >
                             {tx.matched_confirmation_codes.map((code, i) => (
                               <Badge key={i} variant="secondary" className="font-mono text-xs">
                                 {code}
                               </Badge>
                             ))}
+                            <Edit2 className="h-3 w-3 text-muted-foreground ml-1" />
                           </div>
                         ) : (
-                          "-"
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-muted-foreground"
+                            onClick={() => openManualDialog(tx.id, "confirmCode")}
+                          >
+                            <Edit2 className="h-3 w-3 mr-1" />
+                            {l.enterConfirmCode}
+                          </Button>
                         )}
                       </TableCell>
-                      <TableCell className="font-mono text-xs">{tx.transaction_code || "-"}</TableCell>
+                      <TableCell>
+                        {tx.transaction_code ? (
+                          <div
+                            className="flex items-center gap-1 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
+                            onClick={() => openManualDialog(tx.id, "transactionCode")}
+                          >
+                            <span className="font-mono text-xs">{tx.transaction_code}</span>
+                            <Edit2 className="h-3 w-3 text-muted-foreground" />
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-muted-foreground"
+                            onClick={() => openManualDialog(tx.id, "transactionCode")}
+                          >
+                            <Edit2 className="h-3 w-3 mr-1" />-
+                          </Button>
+                        )}
+                      </TableCell>
                       {csvHeaders.map((header) => (
                         <TableCell key={header}>{tx.raw_data?.[header] || "-"}</TableCell>
                       ))}
@@ -651,158 +734,44 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
         </CardContent>
       </Card>
 
-      <Dialog open={showFilterDialog} onOpenChange={setShowFilterDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{l.filterOptions}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="filter-unreconciled"
-                  checked={filters.unreconciled}
-                  onCheckedChange={() => toggleFilter("unreconciled")}
-                />
-                <Label htmlFor="filter-unreconciled" className="cursor-pointer">
-                  {l.unreconciled}
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="filter-reconciled"
-                  checked={filters.reconciled}
-                  onCheckedChange={() => toggleFilter("reconciled")}
-                />
-                <Label htmlFor="filter-reconciled" className="cursor-pointer">
-                  {l.reconciled}
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="filter-positive"
-                  checked={filters.positiveAmount}
-                  onCheckedChange={() => toggleFilter("positiveAmount")}
-                />
-                <Label htmlFor="filter-positive" className="cursor-pointer">
-                  {l.positiveAmount}
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="filter-negative"
-                  checked={filters.negativeAmount}
-                  onCheckedChange={() => toggleFilter("negativeAmount")}
-                />
-                <Label htmlFor="filter-negative" className="cursor-pointer">
-                  {l.negativeAmount}
-                </Label>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setFilters({
-                  unreconciled: false,
-                  reconciled: false,
-                  positiveAmount: false,
-                  negativeAmount: false,
-                })
-                setCurrentPage(1)
-              }}
-            >
-              {t("common.reset")}
-            </Button>
-            <Button onClick={() => setShowFilterDialog(false)}>{t("confirm")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{l.manualReconcile}</DialogTitle>
-            <DialogDescription>{l.manualReconcileDesc}</DialogDescription>
+            <DialogTitle>{editMode === "transactionCode" ? l.editTransactionCode : l.editConfirmCode}</DialogTitle>
+            <DialogDescription>
+              {editMode === "transactionCode" ? l.editTransactionCodeDesc : l.editConfirmCodeDesc}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>{l.confirmationCode}</Label>
-              <Input
-                value={manualConfirmCode}
-                onChange={(e) => setManualConfirmCode(e.target.value)}
-                placeholder={l.enterConfirmCode}
-              />
-            </div>
+            {editMode === "transactionCode" ? (
+              <div className="space-y-2">
+                <Label>{l.transactionCode}</Label>
+                <Input
+                  value={editTransactionCode}
+                  onChange={(e) => setEditTransactionCode(e.target.value)}
+                  placeholder={l.editTransactionCodeDesc}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>{l.confirmationCode}</Label>
+                <Input
+                  value={manualConfirmCode}
+                  onChange={(e) => setManualConfirmCode(e.target.value)}
+                  placeholder={l.enterConfirmCode}
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowManualDialog(false)}>
               {t("cancel")}
             </Button>
-            <Button onClick={handleManualReconcile} disabled={!manualConfirmCode.trim() || isSaving}>
+            <Button
+              onClick={editMode === "transactionCode" ? handleSaveTransactionCode : handleManualReconcile}
+              disabled={isSaving}
+            >
               {isSaving ? t("loading") : t("confirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("bank.updateCsvTitle")}</DialogTitle>
-            <DialogDescription>{t("bank.updateCsvDesc")}</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <RadioGroup value={updateMode} onValueChange={(v) => setUpdateMode(v as "merge" | "replace")}>
-              <div className="flex items-start space-x-3 p-3 border rounded-lg">
-                <RadioGroupItem value="merge" id="merge" className="mt-1" />
-                <div>
-                  <Label htmlFor="merge" className="font-medium">
-                    {t("bank.mergeMode")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">{t("bank.mergeModeDesc")}</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3 p-3 border rounded-lg">
-                <RadioGroupItem value="replace" id="replace" className="mt-1" />
-                <div>
-                  <Label htmlFor="replace" className="font-medium">
-                    {t("bank.replaceMode")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">{t("bank.replaceModeDesc")}</p>
-                </div>
-              </div>
-            </RadioGroup>
-
-            <div className="space-y-2">
-              <Label>{t("import.csvFile")}</Label>
-              <Input type="file" accept=".csv" onChange={handleFileChange} />
-              {file && (
-                <p className="text-sm text-muted-foreground flex items-center gap-2">
-                  <FileSpreadsheet className="h-4 w-4" />
-                  {file.name}
-                </p>
-              )}
-            </div>
-
-            {result && (
-              <div
-                className={`flex items-center gap-2 rounded-lg p-3 ${result.success ? "bg-green-500/10 text-green-600" : "bg-destructive/10 text-destructive"}`}
-              >
-                {result.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                {result.message}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUpdateDialog(false)}>
-              {t("cancel")}
-            </Button>
-            <Button onClick={handleUpdate} disabled={!file || isUploading}>
-              {isUploading ? t("loading") : t("confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

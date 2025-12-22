@@ -28,19 +28,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  ArrowLeft,
-  Upload,
-  Trash2,
-  FileSpreadsheet,
-  Check,
-  AlertCircle,
-  Edit2,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react"
+import { ArrowLeft, Upload, Trash2, Check, Edit2, ChevronLeft, ChevronRight } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useLanguage } from "@/lib/i18n/context"
 
@@ -118,6 +107,9 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
 
   const [currentPage, setCurrentPage] = useState(1)
 
+  const [editMode, setEditMode] = useState<"transactionCode" | "confirmCode" | null>(null)
+  const [editConfirmCode, setEditConfirmCode] = useState("")
+
   const labels = {
     ja: {
       itemNo: "項次",
@@ -134,6 +126,11 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       goToPage: "ページへ移動",
       confirmationCodes: "確認碼",
       payouts: "Payout",
+      editConfirmCode: "編輯確認碼",
+      editConfirmCodeDesc: "輸入訂單確認碼",
+      editTransactionCode: "編輯交易編碼",
+      editTransactionCodeDesc: "輸入銀行交易編碼",
+      confirmCode: "確認碼",
     },
     "zh-TW": {
       itemNo: "項次",
@@ -150,6 +147,11 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       goToPage: "跳至頁面",
       confirmationCodes: "確認碼",
       payouts: "Payout",
+      editConfirmCode: "編輯確認碼",
+      editConfirmCodeDesc: "輸入訂單確認碼",
+      editTransactionCode: "編輯交易編碼",
+      editTransactionCodeDesc: "輸入銀行交易編碼",
+      confirmCode: "確認碼",
     },
     en: {
       itemNo: "No.",
@@ -166,6 +168,11 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       goToPage: "Go to page",
       confirmationCodes: "Confirmations",
       payouts: "Payouts",
+      editConfirmCode: "Edit Confirmation Code",
+      editConfirmCodeDesc: "Enter confirmation code",
+      editTransactionCode: "Edit Transaction Code",
+      editTransactionCodeDesc: "Enter bank transaction code",
+      confirmCode: "Confirmation Code",
     },
   }
 
@@ -272,7 +279,39 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
   }
 
   const handleManualReconcile = async () => {
-    if (!selectedTxId || !manualTransactionCode.trim()) return
+    if (!selectedTxId) return
+
+    if (editMode === "confirmCode") {
+      if (!editConfirmCode.trim()) return
+
+      setIsSaving(true)
+      try {
+        const res = await fetch("/api/platform-transactions/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transactionId: selectedTxId,
+            confirmationCode: editConfirmCode.trim(),
+          }),
+        })
+
+        if (res.ok) {
+          setShowManualDialog(false)
+          setEditConfirmCode("")
+          setSelectedTxId(null)
+          setEditMode(null)
+          router.refresh()
+        }
+      } catch (error) {
+        console.error("Save confirmation code error:", error)
+      } finally {
+        setIsSaving(false)
+      }
+      return
+    }
+
+    // 原有的交易編碼保存邏輯
+    if (!manualTransactionCode.trim()) return
 
     setIsSaving(true)
     try {
@@ -290,6 +329,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
         setShowManualDialog(false)
         setManualTransactionCode("")
         setSelectedTxId(null)
+        setEditMode(null)
         router.refresh()
       }
     } catch (error) {
@@ -299,9 +339,16 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
     }
   }
 
-  const openManualDialog = (txId: string) => {
+  const openManualDialog = (txId: string, mode: "transactionCode" | "confirmCode" = "transactionCode") => {
+    const tx = transactions.find((t) => t.id === txId)
     setSelectedTxId(txId)
-    setManualTransactionCode("")
+    setEditMode(mode)
+
+    if (mode === "confirmCode") {
+      setEditConfirmCode(tx?.raw_data?.["確認碼"] || tx?.confirmation_code || "")
+    } else {
+      setManualTransactionCode(tx?.matched_bank_transaction_code || "")
+    }
     setShowManualDialog(true)
   }
 
@@ -407,24 +454,24 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                 <TableRow>
                   <TableHead className="sticky left-0 bg-background z-10 min-w-[60px]">{l.itemNo}</TableHead>
                   <TableHead className="min-w-[100px]">{l.reconcileStatus}</TableHead>
-                  <TableHead className="min-w-[150px]">{l.transactionCode}</TableHead>
+                  <TableHead className="min-w-[120px]">{l.transactionCode}</TableHead>
                   {csvHeaders.map((header) => (
-                    <TableHead key={header} className="min-w-[100px]">
-                      {header}
-                    </TableHead>
+                    <TableHead key={header}>{header}</TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedTransactions.map((tx, index) => {
-                  const showReconcileStatus = shouldShowReconcileStatus(tx)
                   const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1
+                  const isPayout = tx.raw_data?.["類型"] === "Payout" || tx.type === "Payout"
+                  const hasConfirmCode = tx.raw_data?.["確認碼"] || tx.confirmation_code
+
                   return (
                     <TableRow key={tx.id}>
                       <TableCell className="sticky left-0 bg-background z-10 font-medium">{globalIndex}</TableCell>
                       <TableCell>
-                        {showReconcileStatus ? (
-                          tx.reconciliation_status === "reconciled" ? (
+                        {shouldShowReconcileStatus(tx) ? (
+                          tx.matched_bank_transaction_code ? (
                             <Badge variant="default" className="bg-green-500">
                               <Check className="h-3 w-3 mr-1" />
                               {l.reconciled}
@@ -436,7 +483,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6"
-                                onClick={() => openManualDialog(tx.id)}
+                                onClick={() => openManualDialog(tx.id, "transactionCode")}
                               >
                                 <Edit2 className="h-3 w-3" />
                               </Button>
@@ -447,17 +494,62 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                         )}
                       </TableCell>
                       <TableCell>
-                        {tx.type === "Payout" && tx.matched_bank_transaction_code ? (
-                          <Badge variant="secondary" className="font-mono text-xs">
-                            {tx.matched_bank_transaction_code}
-                          </Badge>
+                        {isPayout ? (
+                          tx.matched_bank_transaction_code ? (
+                            <div
+                              className="flex items-center gap-1 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
+                              onClick={() => openManualDialog(tx.id, "transactionCode")}
+                            >
+                              <Badge variant="secondary" className="font-mono text-xs">
+                                {tx.matched_bank_transaction_code}
+                              </Badge>
+                              <Edit2 className="h-3 w-3 text-muted-foreground" />
+                            </div>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-muted-foreground"
+                              onClick={() => openManualDialog(tx.id, "transactionCode")}
+                            >
+                              <Edit2 className="h-3 w-3 mr-1" />-
+                            </Button>
+                          )
                         ) : (
                           "-"
                         )}
                       </TableCell>
-                      {csvHeaders.map((header) => (
-                        <TableCell key={header}>{tx.raw_data?.[header] ?? "-"}</TableCell>
-                      ))}
+                      {csvHeaders.map((header) => {
+                        const cellValue = tx.raw_data?.[header] ?? "-"
+
+                        // 確認碼欄位特殊處理
+                        if (header === "確認碼" && !isPayout) {
+                          return (
+                            <TableCell key={header}>
+                              {cellValue !== "-" ? (
+                                <div
+                                  className="flex items-center gap-1 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
+                                  onClick={() => openManualDialog(tx.id, "confirmCode")}
+                                >
+                                  <span>{cellValue}</span>
+                                  <Edit2 className="h-3 w-3 text-muted-foreground" />
+                                </div>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-muted-foreground"
+                                  onClick={() => openManualDialog(tx.id, "confirmCode")}
+                                >
+                                  <Edit2 className="h-3 w-3 mr-1" />-
+                                </Button>
+                              )}
+                            </TableCell>
+                          )
+                        }
+
+                        return <TableCell key={header}>{cellValue}</TableCell>
+                      })}
                     </TableRow>
                   )
                 })}
@@ -494,91 +586,46 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
         </CardContent>
       </Card>
 
-      {/* Manual Reconcile Dialog */}
       <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{l.manualReconcile}</DialogTitle>
-            <DialogDescription>{l.manualReconcileDesc}</DialogDescription>
+            <DialogTitle>{editMode === "confirmCode" ? l.editConfirmCode : l.editTransactionCode}</DialogTitle>
+            <DialogDescription>
+              {editMode === "confirmCode" ? l.editConfirmCodeDesc : l.editTransactionCodeDesc}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>{l.transactionCode}</Label>
-              <Input
-                value={manualTransactionCode}
-                onChange={(e) => setManualTransactionCode(e.target.value)}
-                placeholder={l.enterTransactionCode}
-              />
-            </div>
+            {editMode === "confirmCode" ? (
+              <div className="space-y-2">
+                <Label>{l.confirmCode}</Label>
+                <Input
+                  value={editConfirmCode}
+                  onChange={(e) => setEditConfirmCode(e.target.value)}
+                  placeholder={l.editConfirmCodeDesc}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>{l.transactionCode}</Label>
+                <Input
+                  value={manualTransactionCode}
+                  onChange={(e) => setManualTransactionCode(e.target.value)}
+                  placeholder={l.enterTransactionCode}
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowManualDialog(false)}>
               {t("cancel")}
             </Button>
-            <Button onClick={handleManualReconcile} disabled={!manualTransactionCode.trim() || isSaving}>
+            <Button
+              onClick={handleManualReconcile}
+              disabled={
+                isSaving || (editMode === "confirmCode" ? !editConfirmCode.trim() : !manualTransactionCode.trim())
+              }
+            >
               {isSaving ? t("loading") : t("confirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Update Dialog */}
-      <Dialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("platform.updateCsvTitle")}</DialogTitle>
-            <DialogDescription>{t("platform.updateCsvDesc")}</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <RadioGroup value={updateMode} onValueChange={(v) => setUpdateMode(v as "merge" | "replace")}>
-              <div className="flex items-start space-x-3 p-3 border rounded-lg">
-                <RadioGroupItem value="merge" id="merge" className="mt-1" />
-                <div>
-                  <Label htmlFor="merge" className="font-medium">
-                    {t("platform.mergeMode")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">{t("platform.mergeModeDesc")}</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3 p-3 border rounded-lg">
-                <RadioGroupItem value="replace" id="replace" className="mt-1" />
-                <div>
-                  <Label htmlFor="replace" className="font-medium">
-                    {t("platform.replaceMode")}
-                  </Label>
-                  <p className="text-sm text-muted-foreground">{t("platform.replaceModeDesc")}</p>
-                </div>
-              </div>
-            </RadioGroup>
-
-            <div className="space-y-2">
-              <Label>{t("import.csvFile")}</Label>
-              <Input type="file" accept=".csv" onChange={handleFileChange} />
-              {file && (
-                <p className="text-sm text-muted-foreground flex items-center gap-2">
-                  <FileSpreadsheet className="h-4 w-4" />
-                  {file.name}
-                </p>
-              )}
-            </div>
-
-            {result && (
-              <div
-                className={`flex items-center gap-2 rounded-lg p-3 ${result.success ? "bg-green-500/10 text-green-600" : "bg-destructive/10 text-destructive"}`}
-              >
-                {result.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-                {result.message}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUpdateDialog(false)}>
-              {t("cancel")}
-            </Button>
-            <Button onClick={handleUpdate} disabled={!file || isUploading}>
-              {isUploading ? t("loading") : t("confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

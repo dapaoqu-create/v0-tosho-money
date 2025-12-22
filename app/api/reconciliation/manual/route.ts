@@ -30,7 +30,11 @@ export async function POST(request: NextRequest) {
         .eq("id", transactionId)
         .single()
 
-      console.log("[v0] Bank transaction:", { bankTx, bankError, transactionCode: bankTx?.transaction_code })
+      console.log("[v0] Bank transaction:", {
+        id: bankTx?.id,
+        transactionCode: bankTx?.transaction_code,
+        error: bankError,
+      })
 
       if (!bankTx) {
         return NextResponse.json({ error: "Bank transaction not found" }, { status: 404 })
@@ -40,7 +44,7 @@ export async function POST(request: NextRequest) {
       console.log("[v0] Bank transaction code:", bankTransactionCode)
 
       // 更新銀行交易
-      await supabase
+      const { error: updateBankError } = await supabase
         .from("bank_transactions")
         .update({
           reconciliation_status: "reconciled",
@@ -49,17 +53,51 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", transactionId)
 
-      const { data: allPlatformTxs, error: platformError } = await supabase.from("platform_transactions").select("*")
+      console.log("[v0] Updated bank transaction, error:", updateBankError)
 
-      console.log("[v0] Platform transactions query error:", platformError)
+      // 先嘗試用 confirmation_code 欄位查詢
+      const { data: platformTxsByCode } = await supabase
+        .from("platform_transactions")
+        .select("*")
+        .eq("confirmation_code", confirmationCode)
 
-      // 在 JavaScript 中過濾匹配的確認碼
-      const platformTxs =
-        allPlatformTxs?.filter(
-          (tx) => tx.confirmation_code === confirmationCode || tx.raw_data?.["確認碼"] === confirmationCode,
-        ) || []
+      console.log("[v0] Platform txs by confirmation_code field:", platformTxsByCode?.length || 0)
 
-      console.log("[v0] Found platform transactions with confirmation code:", platformTxs.length)
+      // 如果沒找到，分批查詢所有批次，在每個批次中查找
+      let platformTxs = platformTxsByCode || []
+
+      if (platformTxs.length === 0) {
+        // 獲取所有平台批次
+        const { data: batches } = await supabase
+          .from("csv_import_batches")
+          .select("batch_id")
+          .eq("source_type", "platform")
+
+        console.log("[v0] Found platform batches:", batches?.length || 0)
+
+        // 逐個批次查詢
+        for (const batch of batches || []) {
+          const { data: batchTxs } = await supabase
+            .from("platform_transactions")
+            .select("*")
+            .eq("batch_id", batch.batch_id)
+
+          // 在 JavaScript 中過濾
+          const matchedTxs =
+            batchTxs?.filter(
+              (tx) =>
+                tx.raw_data?.["確認碼"] === confirmationCode || tx.raw_data?.["Confirmation Code"] === confirmationCode,
+            ) || []
+
+          if (matchedTxs.length > 0) {
+            platformTxs = matchedTxs
+            console.log("[v0] Found matching txs in batch:", batch.batch_id, "count:", matchedTxs.length)
+            break // 找到就停止
+          }
+        }
+      }
+
+      console.log("[v0] Total platform transactions found:", platformTxs.length)
 
       if (platformTxs.length > 0) {
         for (const platformTx of platformTxs) {
@@ -68,10 +106,11 @@ export async function POST(request: NextRequest) {
             id: platformTx.id,
             rowIndex: platformRowIndex,
             batchId: platformTx.batch_id,
+            type: platformTx.type,
           })
 
-          // 更新預訂行
-          await supabase
+          // 更新預訂行狀態
+          const { error: updateBookingError } = await supabase
             .from("platform_transactions")
             .update({
               reconciliation_status: "reconciled",
@@ -79,24 +118,45 @@ export async function POST(request: NextRequest) {
             })
             .eq("id", platformTx.id)
 
-          const { data: batchPayouts, error: payoutError } = await supabase
+          console.log("[v0] Updated booking row, error:", updateBookingError)
+
+          // 查詢同批次的所有 Payout
+          const { data: batchPayouts, error: payoutQueryError } = await supabase
             .from("platform_transactions")
             .select("*")
             .eq("batch_id", platformTx.batch_id)
             .eq("type", "Payout")
 
-          console.log("[v0] Batch payouts found:", batchPayouts?.length, "error:", payoutError)
+          console.log("[v0] Batch payouts found:", batchPayouts?.length, "error:", payoutQueryError)
 
           // 在 JavaScript 中找到最近的前一個 Payout
-          const filteredPayouts = batchPayouts?.filter((p) => getRowIndex(p) < platformRowIndex) || []
+          const filteredPayouts =
+            batchPayouts?.filter((p) => {
+              const payoutRowIndex = getRowIndex(p)
+              console.log("[v0] Checking payout row:", payoutRowIndex, "< booking row:", platformRowIndex)
+              return payoutRowIndex < platformRowIndex
+            }) || []
+
           console.log("[v0] Filtered payouts (before booking):", filteredPayouts.length)
 
-          const payoutTx = filteredPayouts.sort((a, b) => getRowIndex(b) - getRowIndex(a))[0]
+          // 排序找到最近的 Payout
+          const sortedPayouts = filteredPayouts.sort((a, b) => getRowIndex(b) - getRowIndex(a))
+          const payoutTx = sortedPayouts[0]
 
-          console.log("[v0] Found payout tx:", payoutTx ? { id: payoutTx.id, rowIndex: getRowIndex(payoutTx) } : null)
+          console.log(
+            "[v0] Found payout tx:",
+            payoutTx
+              ? {
+                  id: payoutTx.id,
+                  rowIndex: getRowIndex(payoutTx),
+                  currentStatus: payoutTx.reconciliation_status,
+                  currentCode: payoutTx.matched_bank_transaction_code,
+                }
+              : null,
+          )
 
           if (payoutTx) {
-            const updateResult = await supabase
+            const { error: updatePayoutError } = await supabase
               .from("platform_transactions")
               .update({
                 reconciliation_status: "reconciled",
@@ -105,7 +165,21 @@ export async function POST(request: NextRequest) {
               })
               .eq("id", payoutTx.id)
 
-            console.log("[v0] Updated payout with bank transaction code:", bankTransactionCode, "result:", updateResult)
+            console.log(
+              "[v0] Updated payout with bank transaction code:",
+              bankTransactionCode,
+              "error:",
+              updatePayoutError,
+            )
+
+            // 驗證更新是否成功
+            const { data: verifyPayout } = await supabase
+              .from("platform_transactions")
+              .select("reconciliation_status, matched_bank_transaction_code")
+              .eq("id", payoutTx.id)
+              .single()
+
+            console.log("[v0] Verified payout after update:", verifyPayout)
           } else {
             console.log("[v0] No payout found before booking row")
           }
@@ -115,12 +189,16 @@ export async function POST(request: NextRequest) {
       }
 
       // 記錄手動對賬
-      await supabase.from("reconciliation_matches").insert({
-        bank_transaction_id: transactionId,
-        platform_transaction_ids: platformTxs?.map((tx) => tx.id) || [],
-        confirmation_codes: [confirmationCode],
-        is_manual: true,
-      })
+      try {
+        await supabase.from("reconciliation_matches").insert({
+          bank_transaction_id: transactionId,
+          platform_transaction_ids: platformTxs?.map((tx) => tx.id) || [],
+          confirmation_codes: [confirmationCode],
+          is_manual: true,
+        })
+      } catch (e) {
+        console.log("[v0] Failed to insert reconciliation_matches:", e)
+      }
     } else if (type === "platform") {
       // 平台報表手動填寫交易編碼
       if (!transactionCode) {

@@ -404,7 +404,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
   }
 
   const handleManualReconcile = async () => {
-    if (!selectedTxId || !manualConfirmCode.trim()) return
+    if (!selectedTxId) return
 
     setIsSaving(true)
     try {
@@ -414,7 +414,7 @@ export function BankBatchDetail({ batch, transactions }: BankBatchDetailProps) {
         body: JSON.stringify({
           type: "bank",
           transactionId: selectedTxId,
-          confirmationCode: manualConfirmCode.trim(),
+          confirmationCode: manualConfirmCode.trim() || null,
         }),
       })
 

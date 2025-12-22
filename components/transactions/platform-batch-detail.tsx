@@ -142,7 +142,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       enterTransactionCode: "輸入交易編碼",
       manualReconcileDesc: "手動輸入交易編碼完成對賬",
       page: "頁",
-      of: "/",
+      of: "of",
       totalRecords: "筆",
       goToPage: "跳至頁面",
       confirmationCodes: "確認碼",
@@ -282,8 +282,6 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
     if (!selectedTxId) return
 
     if (editMode === "confirmCode") {
-      if (!editConfirmCode.trim()) return
-
       setIsSaving(true)
       try {
         const res = await fetch("/api/platform-transactions/update", {
@@ -291,7 +289,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             transactionId: selectedTxId,
-            confirmationCode: editConfirmCode.trim(),
+            confirmationCode: editConfirmCode.trim() || null,
           }),
         })
 
@@ -310,9 +308,6 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       return
     }
 
-    // 原有的交易編碼保存邏輯
-    if (!manualTransactionCode.trim()) return
-
     setIsSaving(true)
     try {
       const res = await fetch("/api/reconciliation/manual", {
@@ -321,7 +316,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
         body: JSON.stringify({
           type: "platform",
           transactionId: selectedTxId,
-          transactionCode: manualTransactionCode.trim(),
+          transactionCode: manualTransactionCode.trim() || null,
         }),
       })
 
@@ -619,12 +614,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
             <Button variant="outline" onClick={() => setShowManualDialog(false)}>
               {t("cancel")}
             </Button>
-            <Button
-              onClick={handleManualReconcile}
-              disabled={
-                isSaving || (editMode === "confirmCode" ? !editConfirmCode.trim() : !manualTransactionCode.trim())
-              }
-            >
+            <Button onClick={handleManualReconcile} disabled={isSaving}>
               {isSaving ? t("loading") : t("confirm")}
             </Button>
           </DialogFooter>

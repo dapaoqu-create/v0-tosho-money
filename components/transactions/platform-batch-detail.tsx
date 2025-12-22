@@ -29,7 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Upload, Trash2, Check, Edit2, ChevronLeft, ChevronRight } from "lucide-react"
+import { ArrowLeft, Upload, Trash2, Check, Edit2, ChevronLeft, ChevronRight, Filter } from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useLanguage } from "@/lib/i18n/context"
 
@@ -113,6 +113,13 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
   const [editMode, setEditMode] = useState<"transactionCode" | "confirmCode" | null>(null)
   const [editConfirmCode, setEditConfirmCode] = useState("")
 
+  const [showFilterDialog, setShowFilterDialog] = useState(false)
+  const [filters, setFilters] = useState<{
+    reconciliationStatus: "all" | "reconciled" | "unreconciled"
+  }>({
+    reconciliationStatus: "all",
+  })
+
   const labels = {
     ja: {
       itemNo: "項次",
@@ -134,6 +141,11 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       editTransactionCode: "編輯交易編碼",
       editTransactionCodeDesc: "輸入銀行交易編碼",
       confirmCode: "確認碼",
+      filter: "フィルター",
+      filterDesc: "対帳状態でフィルターします",
+      reconciliationStatus: "対帳状態",
+      clearFilter: "フィルターをクリア",
+      all: "すべて",
     },
     "zh-TW": {
       itemNo: "項次",
@@ -155,6 +167,11 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       editTransactionCode: "編輯交易編碼",
       editTransactionCodeDesc: "輸入銀行交易編碼",
       confirmCode: "確認碼",
+      filter: "篩選",
+      filterDesc: "依對賬狀態篩選",
+      reconciliationStatus: "對賬狀態",
+      clearFilter: "清除篩選",
+      all: "全部",
     },
     en: {
       itemNo: "No.",
@@ -176,6 +193,11 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       editTransactionCode: "Edit Transaction Code",
       editTransactionCodeDesc: "Enter bank transaction code",
       confirmCode: "Confirmation Code",
+      filter: "Filter",
+      filterDesc: "Filter by reconciliation status",
+      reconciliationStatus: "Reconciliation Status",
+      clearFilter: "Clear Filter",
+      all: "All",
     },
   }
 
@@ -198,11 +220,36 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
 
   const csvHeaders = getHeaders()
 
-  const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE)
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      // 篩選對賬狀態（只看 Payout 行）
+      if (filters.reconciliationStatus !== "all") {
+        const isPayout = tx.raw_data?.["類型"] === "Payout" || tx.type === "Payout"
+        if (isPayout) {
+          const status = tx.reconciliation_status || "unreconciled"
+          if (filters.reconciliationStatus === "reconciled" && status !== "reconciled") {
+            return false
+          }
+          if (filters.reconciliationStatus === "unreconciled" && status === "reconciled") {
+            return false
+          }
+        }
+      }
+      return true
+    })
+  }, [transactions, filters])
+
+  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
   const paginatedTransactions = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
-    return transactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-  }, [transactions, currentPage])
+    return filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  }, [filteredTransactions, currentPage])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filters])
+
+  const hasActiveFilter = filters.reconciliationStatus !== "all"
 
   const shouldShowReconcileStatus = (tx: PlatformTransaction) => {
     const isPayout = tx.raw_data?.["類型"] === "Payout" || tx.type === "Payout"
@@ -442,6 +489,11 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
               </CardDescription>
             </div>
             <div className="flex gap-2">
+              <Button variant={hasActiveFilter ? "default" : "outline"} onClick={() => setShowFilterDialog(true)}>
+                <Filter className="mr-2 h-4 w-4" />
+                {l.filter}
+                {hasActiveFilter && " (1)"}
+              </Button>
               <Button variant="outline" onClick={() => setShowUpdateDialog(true)}>
                 <Upload className="mr-2 h-4 w-4" />
                 {t("platform.updateCsv")}
@@ -457,7 +509,8 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
           {totalPages > 1 && (
             <div className="flex items-center justify-between mb-4">
               <div className="text-sm text-muted-foreground">
-                {l.page} {currentPage} {l.of} {totalPages} ({transactions.length} {l.totalRecords})
+                {l.page} {currentPage} {l.of} {totalPages} ({filteredTransactions.length} {l.totalRecords})
+                {hasActiveFilter && ` / ${transactions.length} ${l.totalRecords}`}
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -669,6 +722,54 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showFilterDialog} onOpenChange={setShowFilterDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{l.filter}</DialogTitle>
+            <DialogDescription>{l.filterDesc}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="mb-2 block">{l.reconciliationStatus}</Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={filters.reconciliationStatus === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilters((f) => ({ ...f, reconciliationStatus: "all" }))}
+                >
+                  {l.all}
+                </Button>
+                <Button
+                  variant={filters.reconciliationStatus === "unreconciled" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilters((f) => ({ ...f, reconciliationStatus: "unreconciled" }))}
+                >
+                  {l.unreconciled}
+                </Button>
+                <Button
+                  variant={filters.reconciliationStatus === "reconciled" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFilters((f) => ({ ...f, reconciliationStatus: "reconciled" }))}
+                >
+                  {l.reconciled}
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setFilters({ reconciliationStatus: "all" })
+              }}
+            >
+              {l.clearFilter}
+            </Button>
+            <Button onClick={() => setShowFilterDialog(false)}>{t("common.confirm")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

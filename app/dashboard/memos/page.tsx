@@ -32,10 +32,15 @@ interface Memo {
   updated_at: string
 }
 
+interface BankOption {
+  code: string
+  name: string
+}
+
 export default function MemosPage() {
   const { t } = useLanguage()
   const [memos, setMemos] = useState<Memo[]>([])
-  const [bankNames, setBankNames] = useState<string[]>([])
+  const [bankOptions, setBankOptions] = useState<BankOption[]>([])
   const [platformNames, setPlatformNames] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -77,7 +82,7 @@ export default function MemosPage() {
     try {
       const res = await fetch("/api/memos/sources")
       const data = await res.json()
-      if (data.bankNames) setBankNames(data.bankNames)
+      if (data.bankNames) setBankOptions(data.bankNames)
       if (data.platformNames) setPlatformNames(data.platformNames)
     } catch (error) {
       console.error("Failed to fetch sources:", error)
@@ -102,12 +107,15 @@ export default function MemosPage() {
 
     setSaving(true)
     try {
+      const bankName =
+        sourceType === "bank" ? bankOptions.find((b) => b.code === selectedBank)?.name || selectedBank : null
+
       const res = await fetch("/api/memos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source_type: sourceType,
-          bank_name: sourceType === "bank" ? selectedBank : null,
+          bank_name: bankName,
           platform_name: sourceType === "platform" ? selectedPlatform : null,
           content: content.trim(),
         }),
@@ -306,9 +314,9 @@ export default function MemosPage() {
                     <SelectValue placeholder={t("memo.selectBankPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {bankNames.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
+                    {bankOptions.map((bank) => (
+                      <SelectItem key={bank.code} value={bank.code}>
+                        {bank.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

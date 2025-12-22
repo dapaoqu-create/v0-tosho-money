@@ -11,6 +11,8 @@ export async function POST(request: NextRequest) {
   try {
     const { type, transactionId, confirmationCode, transactionCode } = await request.json()
 
+    console.log("[v0] Manual reconciliation request:", { type, transactionId, confirmationCode, transactionCode })
+
     if (!transactionId) {
       return NextResponse.json({ error: "Missing transaction ID" }, { status: 400 })
     }
@@ -22,7 +24,20 @@ export async function POST(request: NextRequest) {
       }
 
       // 獲取銀行交易的交易編碼
-      const { data: bankTx } = await supabase.from("bank_transactions").select("*").eq("id", transactionId).single()
+      const { data: bankTx, error: bankError } = await supabase
+        .from("bank_transactions")
+        .select("*")
+        .eq("id", transactionId)
+        .single()
+
+      console.log("[v0] Bank transaction:", { bankTx, bankError, transactionCode: bankTx?.transaction_code })
+
+      if (!bankTx) {
+        return NextResponse.json({ error: "Bank transaction not found" }, { status: 404 })
+      }
+
+      const bankTransactionCode = bankTx.transaction_code
+      console.log("[v0] Bank transaction code:", bankTransactionCode)
 
       // 更新銀行交易
       await supabase
@@ -34,7 +49,9 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", transactionId)
 
-      const { data: allPlatformTxs } = await supabase.from("platform_transactions").select("*")
+      const { data: allPlatformTxs, error: platformError } = await supabase.from("platform_transactions").select("*")
+
+      console.log("[v0] Platform transactions query error:", platformError)
 
       // 在 JavaScript 中過濾匹配的確認碼
       const platformTxs =
@@ -42,9 +59,16 @@ export async function POST(request: NextRequest) {
           (tx) => tx.confirmation_code === confirmationCode || tx.raw_data?.["確認碼"] === confirmationCode,
         ) || []
 
+      console.log("[v0] Found platform transactions with confirmation code:", platformTxs.length)
+
       if (platformTxs.length > 0) {
         for (const platformTx of platformTxs) {
           const platformRowIndex = getRowIndex(platformTx)
+          console.log("[v0] Processing platform tx:", {
+            id: platformTx.id,
+            rowIndex: platformRowIndex,
+            batchId: platformTx.batch_id,
+          })
 
           // 更新預訂行
           await supabase
@@ -55,28 +79,39 @@ export async function POST(request: NextRequest) {
             })
             .eq("id", platformTx.id)
 
-          const { data: batchPayouts } = await supabase
+          const { data: batchPayouts, error: payoutError } = await supabase
             .from("platform_transactions")
             .select("*")
             .eq("batch_id", platformTx.batch_id)
             .eq("type", "Payout")
 
+          console.log("[v0] Batch payouts found:", batchPayouts?.length, "error:", payoutError)
+
           // 在 JavaScript 中找到最近的前一個 Payout
-          const payoutTx = batchPayouts
-            ?.filter((p) => getRowIndex(p) < platformRowIndex)
-            .sort((a, b) => getRowIndex(b) - getRowIndex(a))[0]
+          const filteredPayouts = batchPayouts?.filter((p) => getRowIndex(p) < platformRowIndex) || []
+          console.log("[v0] Filtered payouts (before booking):", filteredPayouts.length)
+
+          const payoutTx = filteredPayouts.sort((a, b) => getRowIndex(b) - getRowIndex(a))[0]
+
+          console.log("[v0] Found payout tx:", payoutTx ? { id: payoutTx.id, rowIndex: getRowIndex(payoutTx) } : null)
 
           if (payoutTx) {
-            await supabase
+            const updateResult = await supabase
               .from("platform_transactions")
               .update({
                 reconciliation_status: "reconciled",
-                matched_bank_transaction_code: bankTx?.transaction_code || null,
+                matched_bank_transaction_code: bankTransactionCode,
                 reconciled: true,
               })
               .eq("id", payoutTx.id)
+
+            console.log("[v0] Updated payout with bank transaction code:", bankTransactionCode, "result:", updateResult)
+          } else {
+            console.log("[v0] No payout found before booking row")
           }
         }
+      } else {
+        console.log("[v0] No platform transactions found with confirmation code:", confirmationCode)
       }
 
       // 記錄手動對賬
@@ -244,7 +279,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Manual reconciliation error:", error)
+    console.error("[v0] Manual reconciliation error:", error)
     return NextResponse.json({ error: "手動對賬失敗" }, { status: 500 })
   }
 }

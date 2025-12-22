@@ -159,6 +159,35 @@ function generateTransactionCode(bankCode: string, dateStr: string, amount: numb
   return `${bankCode}${date}${last4}`
 }
 
+function makeTransactionCodesUnique(transactions: Array<{ transaction_code: string; [key: string]: unknown }>): void {
+  const codeCount: Record<string, number> = {}
+
+  for (const tx of transactions) {
+    const baseCode = tx.transaction_code
+
+    if (codeCount[baseCode] === undefined) {
+      // 第一次出現，記錄但不修改
+      codeCount[baseCode] = 0
+    } else {
+      // 重複出現，添加字母後綴
+      codeCount[baseCode]++
+      const suffix = String.fromCharCode(64 + codeCount[baseCode]) // 65='A', 66='B', ...
+      tx.transaction_code = `${baseCode}${suffix}`
+    }
+  }
+
+  // 如果某個編碼有重複，第一個也需要加上 A
+  const codesWithDuplicates = Object.entries(codeCount)
+    .filter(([, count]) => count > 0)
+    .map(([code]) => code)
+
+  for (const tx of transactions) {
+    if (codesWithDuplicates.includes(tx.transaction_code)) {
+      tx.transaction_code = `${tx.transaction_code}A`
+    }
+  }
+}
+
 function findHeaderIndex(headers: string[], ...keywords: string[]): number {
   for (const keyword of keywords) {
     const index = headers.findIndex((h) => h.includes(keyword))
@@ -286,6 +315,9 @@ export async function POST(request: Request) {
           ...t,
           transaction_date: t.transaction_date || new Date().toISOString().split("T")[0],
         }))
+
+      // Ensure transaction codes are unique
+      makeTransactionCodesUnique(transactions)
 
       console.log("[v0] Bank transactions to insert:", transactions.length)
       if (transactions.length > 0) {

@@ -108,6 +108,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
 
   const [currentPage, setCurrentPage] = useState(1)
   const [highlightCode, setHighlightCode] = useState<string | null>(null)
+  const [highlightRowIndex, setHighlightRowIndex] = useState<number | null>(null)
   const highlightRowRef = useRef<HTMLTableRowElement>(null)
 
   const [editMode, setEditMode] = useState<"transactionCode" | "confirmCode" | null>(null)
@@ -417,10 +418,13 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
     const highlight = searchParams.get("highlight")
     const rowIndexParam = searchParams.get("row")
 
-    if (highlight) {
+    if (highlight || rowIndexParam) {
       setHighlightCode(highlight)
+      if (rowIndexParam) {
+        setHighlightRowIndex(Number.parseInt(rowIndexParam))
+      }
 
-      // 根據確認碼找到在 filteredTransactions 中的位置
+      // 根據確認碼或行索引找到在 filteredTransactions 中的位置
       let targetIndex = -1
 
       if (rowIndexParam) {
@@ -433,7 +437,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
       }
 
       // 如果沒找到，用確認碼搜尋
-      if (targetIndex < 0) {
+      if (targetIndex < 0 && highlight) {
         targetIndex = filteredTransactions.findIndex((tx) => {
           const confirmCode = tx.confirmation_code || tx.raw_data?.["確認碼"]
           return confirmCode === highlight
@@ -449,6 +453,7 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
 
       const timer = setTimeout(() => {
         setHighlightCode(null)
+        setHighlightRowIndex(null)
       }, 20000)
 
       return () => clearTimeout(timer)
@@ -456,18 +461,18 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
   }, [searchParams, filteredTransactions])
 
   useEffect(() => {
-    if (highlightCode && highlightRowRef.current) {
+    if ((highlightCode || highlightRowIndex) && highlightRowRef.current) {
       // 延遲更長時間確保頁面已完全渲染
       const scrollTimer = setTimeout(() => {
         highlightRowRef.current?.scrollIntoView({
           behavior: "smooth",
           block: "center",
         })
-      }, 300)
+      }, 500)
 
       return () => clearTimeout(scrollTimer)
     }
-  }, [highlightCode, currentPage, paginatedTransactions])
+  }, [highlightCode, highlightRowIndex, currentPage, paginatedTransactions])
 
   return (
     <div className="space-y-6">
@@ -567,7 +572,10 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
                   const displayIndex = (currentPage - 1) * ITEMS_PER_PAGE + idx + 1
                   const isReconciled = tx.reconciliation_status === "reconciled"
                   const txConfirmCode = tx.confirmation_code || tx.raw_data?.["確認碼"]
-                  const shouldHighlight = highlightCode && txConfirmCode === highlightCode
+                  const txRowIndex = Number.parseInt(tx.raw_data?.["_row_index"] || "0")
+                  const shouldHighlight =
+                    (highlightCode && txConfirmCode === highlightCode) ||
+                    (highlightRowIndex !== null && txRowIndex === highlightRowIndex)
 
                   return (
                     <TableRow

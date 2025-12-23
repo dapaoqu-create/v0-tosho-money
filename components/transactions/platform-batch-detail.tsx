@@ -403,14 +403,9 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
 
     transactions.forEach((tx) => {
       const type = tx.raw_data?.["類型"] || tx.type
-      const confirmCode = tx.raw_data?.["確認碼"] || tx.confirmation_code
-
       if (type === "Payout") {
         payouts++
-      }
-
-      // 計算有確認碼的記錄數
-      if (confirmCode && confirmCode.trim() !== "") {
+      } else if (type === "預訂") {
         confirmationCodes++
       }
     })
@@ -420,26 +415,34 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
 
   useEffect(() => {
     const highlight = searchParams.get("highlight")
-    const rowIndex = searchParams.get("row")
+    const rowIndexParam = searchParams.get("row")
 
     if (highlight) {
       setHighlightCode(highlight)
 
-      // 如果有行索引，計算頁碼並跳轉
-      if (rowIndex) {
-        const row = Number.parseInt(rowIndex)
-        const targetPage = Math.ceil(row / ITEMS_PER_PAGE)
-        if (targetPage > 0 && targetPage <= totalPages) {
-          setCurrentPage(targetPage)
-        }
-      } else {
-        // 沒有行索引時，搜尋確認碼所在的位置
-        const txIndex = transactions.findIndex((tx) => {
+      // 根據確認碼找到在 filteredTransactions 中的位置
+      let targetIndex = -1
+
+      if (rowIndexParam) {
+        // 如果有行索引參數，先嘗試用 _row_index 來匹配
+        const targetRowIndex = Number.parseInt(rowIndexParam)
+        targetIndex = filteredTransactions.findIndex((tx) => {
+          const txRowIndex = Number.parseInt(tx.raw_data?.["_row_index"] || "0")
+          return txRowIndex === targetRowIndex
+        })
+      }
+
+      // 如果沒找到，用確認碼搜尋
+      if (targetIndex < 0) {
+        targetIndex = filteredTransactions.findIndex((tx) => {
           const confirmCode = tx.confirmation_code || tx.raw_data?.["確認碼"]
           return confirmCode === highlight
         })
-        if (txIndex >= 0) {
-          const targetPage = Math.ceil((txIndex + 1) / ITEMS_PER_PAGE)
+      }
+
+      if (targetIndex >= 0) {
+        const targetPage = Math.ceil((targetIndex + 1) / ITEMS_PER_PAGE)
+        if (targetPage > 0 && targetPage <= Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)) {
           setCurrentPage(targetPage)
         }
       }
@@ -450,19 +453,21 @@ export function PlatformBatchDetail({ batch, transactions }: PlatformBatchDetail
 
       return () => clearTimeout(timer)
     }
-  }, [searchParams, transactions, totalPages])
+  }, [searchParams, filteredTransactions])
 
   useEffect(() => {
     if (highlightCode && highlightRowRef.current) {
-      // 延遲一點時間確保頁面已渲染
-      setTimeout(() => {
+      // 延遲更長時間確保頁面已完全渲染
+      const scrollTimer = setTimeout(() => {
         highlightRowRef.current?.scrollIntoView({
           behavior: "smooth",
           block: "center",
         })
-      }, 100)
+      }, 300)
+
+      return () => clearTimeout(scrollTimer)
     }
-  }, [highlightCode, currentPage])
+  }, [highlightCode, currentPage, paginatedTransactions])
 
   return (
     <div className="space-y-6">

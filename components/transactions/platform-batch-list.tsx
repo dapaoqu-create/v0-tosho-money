@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   AlertDialog,
@@ -17,7 +18,18 @@ import {
 } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { FileSpreadsheet, Trash2, Eye, CheckCircle, Clock, ChevronDown } from "lucide-react"
+import {
+  FileSpreadsheet,
+  Trash2,
+  Eye,
+  CheckCircle,
+  Clock,
+  ChevronDown,
+  Search,
+  X,
+  ExternalLink,
+  Loader2,
+} from "lucide-react"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { useLanguage } from "@/lib/i18n/context"
 
@@ -40,6 +52,19 @@ interface PlatformBatch {
   } | null
 }
 
+interface SearchResult {
+  id: string
+  type: string
+  confirmationCode: string
+  payoutAmount: string
+  reconciliationStatus: string
+  matchedBankTransactionCode: string | null
+  rowIndex: number
+  batchId: string
+  fileName: string
+  platformName: string
+}
+
 interface PlatformBatchListProps {
   batches: PlatformBatch[]
 }
@@ -51,6 +76,64 @@ export function PlatformBatchList({ batches: initialBatches }: PlatformBatchList
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [showSearchResults, setShowSearchResults] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSearchResults(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+
+    if (searchQuery.length < 2) {
+      setSearchResults([])
+      setShowSearchResults(false)
+      return
+    }
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      setIsSearching(true)
+      try {
+        const res = await fetch(`/api/platform-transactions/search?q=${encodeURIComponent(searchQuery)}`)
+        if (res.ok) {
+          const data = await res.json()
+          setSearchResults(data.results || [])
+          setShowSearchResults(true)
+        }
+      } catch (error) {
+        console.error("搜尋錯誤:", error)
+      } finally {
+        setIsSearching(false)
+      }
+    }, 300)
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current)
+      }
+    }
+  }, [searchQuery])
+
+  const handleSearchResultClick = (result: SearchResult) => {
+    const url = `/dashboard/platform-transactions/${result.batchId}?highlight=${encodeURIComponent(result.confirmationCode)}&row=${result.rowIndex}`
+    window.open(url, "_blank")
+    setShowSearchResults(false)
+    setSearchQuery("")
+  }
 
   const handleDelete = async () => {
     if (!deleteId) return
@@ -156,8 +239,100 @@ export function PlatformBatchList({ batches: initialBatches }: PlatformBatchList
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("platform.importList")}</CardTitle>
-          <CardDescription>{t("platform.importListDesc")}</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>{t("platform.importList")}</CardTitle>
+              <CardDescription>{t("platform.importListDesc")}</CardDescription>
+            </div>
+            <div ref={searchRef} className="relative">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={t("platform.searchPlaceholder")}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => searchQuery.length >= 2 && setShowSearchResults(true)}
+                  className="pl-9 pr-9 w-64"
+                />
+                {searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                    onClick={() => {
+                      setSearchQuery("")
+                      setSearchResults([])
+                      setShowSearchResults(false)
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+
+              {/* 搜尋結果浮動視窗 */}
+              {showSearchResults && (
+                <div className="absolute right-0 top-full mt-2 w-[500px] max-h-[400px] overflow-auto bg-background border rounded-lg shadow-lg z-50">
+                  {isSearching ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : searchResults.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">{t("platform.noSearchResults")}</div>
+                  ) : (
+                    <div className="divide-y">
+                      {searchResults.map((result) => (
+                        <div
+                          key={result.id}
+                          className="p-3 hover:bg-muted/50 cursor-pointer transition-colors"
+                          onClick={() => handleSearchResultClick(result)}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs">
+                                {result.type}
+                              </Badge>
+                              {result.confirmationCode && (
+                                <span className="font-mono font-medium text-sm">{result.confirmationCode}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant="outline"
+                                className={
+                                  result.reconciliationStatus === "reconciled"
+                                    ? "bg-green-100 text-green-700 border-green-300"
+                                    : "bg-yellow-100 text-yellow-700 border-yellow-300"
+                                }
+                              >
+                                {result.reconciliationStatus === "reconciled"
+                                  ? t("status.reconciled")
+                                  : t("status.unreconciled")}
+                              </Badge>
+                              <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{result.fileName}</span>
+                            {result.payoutAmount && (
+                              <span className="font-medium">
+                                {t("platform.payout")}: ¥{Number(result.payoutAmount).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                          {result.matchedBankTransactionCode && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {t("bank.transactionCode")}: {result.matchedBankTransactionCode}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {batches.length === 0 ? (

@@ -194,6 +194,10 @@ export const translations = {
     "platform.confirmationCode": "確認コード",
     "platform.multipleCodesTip": "複数の確認コードはカンマで区切ってください",
     "platform.enterTransactionCode": "取引コードを入力",
+    "platform.searchPlaceholder": "確認コードまたは収入金額を検索",
+    "platform.noSearchResults": "一致する結果が見つかりません",
+    "platform.filterStatus": "対帳ステータス",
+    "platform.filterAll": "すべて",
 
     // CSV Import
     "import.title": "CSVインポート",
@@ -535,6 +539,10 @@ export const translations = {
     "platform.confirmationCode": "確認碼",
     "platform.multipleCodesTip": "多個確認碼請用逗號分隔",
     "platform.enterTransactionCode": "輸入交易編碼",
+    "platform.searchPlaceholder": "搜尋確認碼或收款金額",
+    "platform.noSearchResults": "找不到符合的結果",
+    "platform.filterStatus": "對賬狀態",
+    "platform.filterAll": "全部",
 
     // CSV Import
     "import.title": "CSV 匯入",
@@ -878,6 +886,10 @@ export const translations = {
     "platform.confirmationCode": "Confirmation Code",
     "platform.multipleCodesTip": "Separate multiple codes with commas",
     "platform.enterTransactionCode": "Enter Transaction Code",
+    "platform.searchPlaceholder": "Search for confirmation codes or payouts",
+    "platform.noSearchResults": "No matching results found",
+    "platform.filterStatus": "Reconciliation Status",
+    "platform.filterAll": "All",
 
     // CSV Import
     "import.title": "CSV Import",

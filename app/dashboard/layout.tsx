@@ -2,6 +2,7 @@ import type React from "react"
 import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
 import { Sidebar } from "@/components/sidebar"
+import { AiChatButton } from "@/components/ai-assistant/ai-chat-button"
 
 async function getSession() {
   const cookieStore = await cookies()
@@ -33,6 +34,7 @@ export default async function DashboardLayout({
       <main className="flex-1 overflow-auto">
         <div className="p-6">{children}</div>
       </main>
+      <AiChatButton />
     </div>
   )
 }

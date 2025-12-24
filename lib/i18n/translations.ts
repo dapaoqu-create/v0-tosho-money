@@ -343,6 +343,19 @@ export const translations = {
     "memo.deleteConfirmDesc": "このメモは完全に削除されます。この操作は取り消せません。",
     "memo.deleteSuccess": "メモを削除しました",
     "memo.deleteError": "メモの削除に失敗しました",
+
+    // AI Assistant
+    "ai.assistant": "AIアシスタント",
+    "ai.description": "システム管理をサポート",
+    "ai.clear": "クリア",
+    "ai.welcome": "こんにちは！何かお手伝いできることはありますか？",
+    "ai.suggestions": "よくある質問：",
+    "ai.suggestion1": "統計を見せて",
+    "ai.suggestion2": "未対帳の取引を検索",
+    "ai.suggestion3": "CSVリストを表示",
+    "ai.suggestion4": "確認コードを検索",
+    "ai.placeholder": "メッセージを入力...",
+    "ai.thinking": "考え中...",
   },
   "zh-TW": {
     // Common
@@ -685,8 +698,21 @@ export const translations = {
     "memo.editError": "備忘更新失敗",
     "memo.deleteConfirm": "確定要刪除嗎？",
     "memo.deleteConfirmDesc": "此備忘將被永久刪除，無法復原。",
-    "memo.deleteSuccess": "備忘刪除成功",
-    "memo.deleteError": "備忘刪除失敗",
+    "memo.deleteSuccess": "備忘錄已刪除",
+    "memo.deleteError": "刪除備忘錄失敗",
+
+    // AI Assistant
+    "ai.assistant": "AI 助手",
+    "ai.description": "協助管理系統功能",
+    "ai.clear": "清除",
+    "ai.welcome": "您好！有什麼我可以幫助您的嗎？",
+    "ai.suggestions": "常見問題：",
+    "ai.suggestion1": "查看統計資料",
+    "ai.suggestion2": "搜尋未對賬交易",
+    "ai.suggestion3": "顯示 CSV 清單",
+    "ai.suggestion4": "搜尋確認碼",
+    "ai.placeholder": "輸入訊息...",
+    "ai.thinking": "思考中...",
   },
   en: {
     // Common
@@ -1034,6 +1060,19 @@ export const translations = {
     "memo.deleteConfirmDesc": "This memo will be permanently deleted. This action cannot be undone.",
     "memo.deleteSuccess": "Memo deleted successfully",
     "memo.deleteError": "Failed to delete memo",
+
+    // AI Assistant
+    "ai.assistant": "AI Assistant",
+    "ai.description": "Support system management",
+    "ai.clear": "Clear",
+    "ai.welcome": "Hello! Is there anything I can help you with?",
+    "ai.suggestions": "Common Questions:",
+    "ai.suggestion1": "Show statistics",
+    "ai.suggestion2": "Search for pending transactions",
+    "ai.suggestion3": "Display CSV list",
+    "ai.suggestion4": "Search for confirmation codes",
+    "ai.placeholder": "Enter message...",
+    "ai.thinking": "Thinking...",
   },
 }
 

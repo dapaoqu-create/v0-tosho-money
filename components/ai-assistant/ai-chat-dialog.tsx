@@ -1,14 +1,19 @@
 "use client"
 
-import { useChat } from "@ai-sdk/react"
-import { useRef, useEffect } from "react"
+import { useState, useRef, useEffect, type FormEvent } from "react"
 import { X, Send, Bot, User, Loader2, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n/context"
 import Link from "next/link"
+
+interface Message {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  toolInvocations?: any[]
+}
 
 interface AiChatDialogProps {
   open: boolean
@@ -18,10 +23,9 @@ interface AiChatDialogProps {
 export function AiChatDialog({ open, onOpenChange }: AiChatDialogProps) {
   const { t } = useI18n()
   const scrollRef = useRef<HTMLDivElement>(null)
-
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setMessages } = useChat({
-    api: "/api/ai/chat",
-  })
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   // 自動滾動到底部
   useEffect(() => {
@@ -33,6 +37,63 @@ export function AiChatDialog({ open, onOpenChange }: AiChatDialogProps) {
   // 清空對話
   const handleClear = () => {
     setMessages([])
+  }
+
+  // 發送訊息
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!input.trim() || isLoading) return
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: input.trim(),
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setInput("")
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [...messages, userMessage].map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+      })
+
+      if (!response.ok) throw new Error("API error")
+
+      const data = await response.json()
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: data.content || data.text || "",
+        toolInvocations: data.toolInvocations,
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+    } catch (error) {
+      console.error("[v0] AI chat error:", error)
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: t("ai.error") || "抱歉，發生錯誤，請稍後再試。",
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // 設定建議為輸入
+  const handleSuggestionClick = (suggestion: string) => {
+    setInput(suggestion)
   }
 
   if (!open) return null
@@ -61,7 +122,7 @@ export function AiChatDialog({ open, onOpenChange }: AiChatDialogProps) {
       </div>
 
       {/* 對話區域 */}
-      <ScrollArea className="h-[400px] p-4" ref={scrollRef}>
+      <div ref={scrollRef} className="h-[400px] overflow-y-auto p-4">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
             <Bot className="mb-4 h-12 w-12 opacity-50" />
@@ -73,9 +134,7 @@ export function AiChatDialog({ open, onOpenChange }: AiChatDialogProps) {
                   (suggestion, i) => (
                     <button
                       key={i}
-                      onClick={() => {
-                        handleInputChange({ target: { value: suggestion } } as any)
-                      }}
+                      onClick={() => handleSuggestionClick(suggestion)}
                       className="rounded-full border border-border px-3 py-1 text-xs hover:bg-muted"
                     >
                       {suggestion}
@@ -127,14 +186,14 @@ export function AiChatDialog({ open, onOpenChange }: AiChatDialogProps) {
             )}
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* 輸入區域 */}
       <form onSubmit={handleSubmit} className="border-t border-border p-4">
         <div className="flex gap-2">
           <Input
             value={input}
-            onChange={handleInputChange}
+            onChange={(e) => setInput(e.target.value)}
             placeholder={t("ai.placeholder")}
             disabled={isLoading}
             className="flex-1"

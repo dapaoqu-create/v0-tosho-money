@@ -26,9 +26,11 @@ export async function POST(req: Request) {
       tools: {
         getStatistics: tool({
           description: "獲取系統統計資料，包括匯入檔案數、交易筆數、對賬狀態等",
-          parameters: z.object({}),
-          execute: async () => {
-            console.log("[v0] getStatistics called")
+          parameters: z.object({
+            includeDetails: z.boolean().optional().describe("是否包含詳細資訊，預設為 true"),
+          }),
+          execute: async ({ includeDetails = true }) => {
+            console.log("[v0] getStatistics called, includeDetails:", includeDetails)
 
             const { data: batches } = await supabase
               .from("csv_import_batches")
@@ -51,7 +53,7 @@ export async function POST(req: Request) {
             const incomeRows = (bankStats || []).filter((t: any) => t.is_income === true)
             const reconciledBank = incomeRows.filter((t: any) => t.reconciliation_status === "reconciled")
 
-            return {
+            const response = {
               bankCsvCount: bankBatches.length,
               platformCsvCount: platformBatches.length,
               platformTransactions: {
@@ -67,6 +69,13 @@ export async function POST(req: Request) {
                 rate: incomeRows.length > 0 ? Math.round((reconciledBank.length / incomeRows.length) * 100) : 0,
               },
             }
+
+            if (includeDetails) {
+              response.bankDetails = bankBatches
+              response.platformDetails = platformBatches
+            }
+
+            return response
           },
         }),
 

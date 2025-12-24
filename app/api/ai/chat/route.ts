@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const supabase = await createClient()
 
     const result = await generateText({
-      model: "google/gemini-2.0-flash",
+      model: "openai/gpt-4o-mini",
       system: `你是 TOSHO Money 系統的 AI 助手。你可以幫助用戶：
 1. 搜尋交易記錄（確認碼、收款金額）
 2. 查詢對賬狀態和統計
@@ -25,55 +25,6 @@ export async function POST(req: Request) {
       maxSteps: 5,
       tools: {
         getStatistics: tool({
-          description: "獲取系統統計資料，包括匯入檔案數、交易筆數、對賬狀態等",
-          parameters: z.object({
-            _dummy: z.string().optional().describe("不需要填寫此參數"),
-          }),
-          execute: async () => {
-            console.log("[v0] getStatistics called")
-
-            const { data: batches } = await supabase
-              .from("csv_import_batches")
-              .select("id, source_type, file_name, records_count")
-
-            const bankBatches = (batches || []).filter((b: any) => b.source_type === "bank")
-            const platformBatches = (batches || []).filter((b: any) => b.source_type === "platform")
-
-            const { data: platformStats } = await supabase
-              .from("platform_transactions")
-              .select("reconciliation_status, type")
-
-            const payoutRows = (platformStats || []).filter((t: any) => t.type === "Payout")
-            const reconciledPayouts = payoutRows.filter((t: any) => t.reconciliation_status === "reconciled")
-
-            const { data: bankStats } = await supabase
-              .from("bank_transactions")
-              .select("reconciliation_status, is_income")
-
-            const incomeRows = (bankStats || []).filter((t: any) => t.is_income === true)
-            const reconciledBank = incomeRows.filter((t: any) => t.reconciliation_status === "reconciled")
-
-            return {
-              bankCsvCount: bankBatches.length,
-              platformCsvCount: platformBatches.length,
-              platformTransactions: {
-                total: payoutRows.length,
-                reconciled: reconciledPayouts.length,
-                unreconciled: payoutRows.length - reconciledPayouts.length,
-                rate: payoutRows.length > 0 ? Math.round((reconciledPayouts.length / payoutRows.length) * 100) : 0,
-              },
-              bankTransactions: {
-                totalIncome: incomeRows.length,
-                reconciled: reconciledBank.length,
-                unreconciled: incomeRows.length - reconciledBank.length,
-                rate: incomeRows.length > 0 ? Math.round((reconciledBank.length / incomeRows.length) * 100) : 0,
-              },
-            }
-          },
-        }),
-
-        // 獲取統計資料
-        getStatisticsOld: tool({
           description: "獲取系統統計資料，包括匯入檔案數、交易筆數、對賬狀態等",
           parameters: z.object({}),
           execute: async () => {
@@ -119,7 +70,6 @@ export async function POST(req: Request) {
           },
         }),
 
-        // 搜尋平台交易
         searchTransactions: tool({
           description: "搜尋平台交易記錄，可以用確認碼或收款金額搜尋",
           parameters: z.object({
@@ -161,7 +111,6 @@ export async function POST(req: Request) {
           },
         }),
 
-        // 獲取 CSV 清單
         getCsvList: tool({
           description: "獲取已匯入的 CSV 檔案清單",
           parameters: z.object({
@@ -205,7 +154,6 @@ export async function POST(req: Request) {
           },
         }),
 
-        // 查詢收入統計
         getIncomeStatistics: tool({
           description: "查詢指定年份或月份的收入統計",
           parameters: z.object({
@@ -215,7 +163,6 @@ export async function POST(req: Request) {
           execute: async ({ year, month }) => {
             console.log("[v0] getIncomeStatistics called with year:", year, "month:", month)
 
-            // 查詢平台交易的收款金額
             const { data: platformTx } = await supabase
               .from("platform_transactions")
               .select("raw_data, type, reconciliation_status")
@@ -226,7 +173,6 @@ export async function POST(req: Request) {
             let count = 0
 
             for (const tx of platformTx || []) {
-              // 從日期欄位解析年月
               const dateStr = tx.raw_data?.["日期"] || ""
               const txYear = Number.parseInt(dateStr.substring(0, 4))
               const txMonth = Number.parseInt(dateStr.substring(5, 7))
@@ -254,13 +200,12 @@ export async function POST(req: Request) {
           },
         }),
 
-        // 產生頁面導航連結
         navigateTo: tool({
           description: "產生系統頁面的導航連結",
           parameters: z.object({
             page: z
-              .string()
-              .describe("要導航的頁面：dashboard, platform-transactions, bank-transactions, reconciliation, settings"),
+              .enum(["dashboard", "platform-transactions", "bank-transactions", "reconciliation", "settings"])
+              .describe("要導航的頁面"),
           }),
           execute: async ({ page }) => {
             const pages: Record<string, { url: string; description: string }> = {
@@ -282,7 +227,6 @@ export async function POST(req: Request) {
       toolResultsCount: result.toolResults?.length,
     })
 
-    // 構建回應，包含工具調用結果
     const toolInvocations =
       result.toolResults?.map((tr, i) => ({
         toolName: result.toolCalls?.[i]?.toolName || "unknown",

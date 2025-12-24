@@ -17,20 +17,63 @@ export async function POST(req: Request) {
 2. 查詢對賬狀態和統計
 3. 查看匯入的 CSV 檔案清單
 4. 查詢銀行和平台交易明細
-5. 執行手動對賬（填入確認碼或交易編碼）
-6. 更新交易狀態
-7. 刪除 CSV 批次
-8. 提供系統使用指導
+5. 提供系統使用指導
 
-你擁有資料管理權限，可以幫助用戶修改和管理資料。
 請用用戶使用的語言回覆。當執行查詢時，請清晰地展示結果。
-執行修改操作前，請先確認用戶的意圖。
 如果用戶問的問題不在你的能力範圍內，請禮貌地說明並建議他們使用系統的其他功能。`,
       messages,
       maxSteps: 5,
       tools: {
-        // 獲取統計資料
         getStatistics: tool({
+          description: "獲取系統統計資料，包括匯入檔案數、交易筆數、對賬狀態等",
+          parameters: z.object({
+            _dummy: z.string().optional().describe("不需要填寫此參數"),
+          }),
+          execute: async () => {
+            console.log("[v0] getStatistics called")
+
+            const { data: batches } = await supabase
+              .from("csv_import_batches")
+              .select("id, source_type, file_name, records_count")
+
+            const bankBatches = (batches || []).filter((b: any) => b.source_type === "bank")
+            const platformBatches = (batches || []).filter((b: any) => b.source_type === "platform")
+
+            const { data: platformStats } = await supabase
+              .from("platform_transactions")
+              .select("reconciliation_status, type")
+
+            const payoutRows = (platformStats || []).filter((t: any) => t.type === "Payout")
+            const reconciledPayouts = payoutRows.filter((t: any) => t.reconciliation_status === "reconciled")
+
+            const { data: bankStats } = await supabase
+              .from("bank_transactions")
+              .select("reconciliation_status, is_income")
+
+            const incomeRows = (bankStats || []).filter((t: any) => t.is_income === true)
+            const reconciledBank = incomeRows.filter((t: any) => t.reconciliation_status === "reconciled")
+
+            return {
+              bankCsvCount: bankBatches.length,
+              platformCsvCount: platformBatches.length,
+              platformTransactions: {
+                total: payoutRows.length,
+                reconciled: reconciledPayouts.length,
+                unreconciled: payoutRows.length - reconciledPayouts.length,
+                rate: payoutRows.length > 0 ? Math.round((reconciledPayouts.length / payoutRows.length) * 100) : 0,
+              },
+              bankTransactions: {
+                totalIncome: incomeRows.length,
+                reconciled: reconciledBank.length,
+                unreconciled: incomeRows.length - reconciledBank.length,
+                rate: incomeRows.length > 0 ? Math.round((reconciledBank.length / incomeRows.length) * 100) : 0,
+              },
+            }
+          },
+        }),
+
+        // 獲取統計資料
+        getStatisticsOld: tool({
           description: "獲取系統統計資料，包括匯入檔案數、交易筆數、對賬狀態等",
           parameters: z.object({}),
           execute: async () => {
@@ -216,8 +259,8 @@ export async function POST(req: Request) {
           description: "產生系統頁面的導航連結",
           parameters: z.object({
             page: z
-              .enum(["dashboard", "platform-transactions", "bank-transactions", "reconciliation", "settings"])
-              .describe("要導航的頁面"),
+              .string()
+              .describe("要導航的頁面：dashboard, platform-transactions, bank-transactions, reconciliation, settings"),
           }),
           execute: async ({ page }) => {
             const pages: Record<string, { url: string; description: string }> = {

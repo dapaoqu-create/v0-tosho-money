@@ -16,7 +16,7 @@ export async function POST(req: Request) {
 1. 搜尋交易記錄（確認碼、收款金額）
 2. 查詢對賬狀態和統計
 3. 查看匯入的 CSV 檔案清單
-4. 查詢銀行和平台交易明細
+4. 查詢收入統計
 5. 提供系統使用指導
 
 請用用戶使用的語言回覆。當執行查詢時，請清晰地展示結果。
@@ -25,11 +25,11 @@ export async function POST(req: Request) {
       maxSteps: 5,
       tools: {
         getStatistics: tool({
-          description: "獲取系統統計資料，包括匯入檔案數、交易筆數、對賬狀態等",
+          description: "獲取系統統計資料，包括匯入檔案數、交易筆數、對賬狀態等。調用時請傳入 includeDetails: true",
           parameters: z.object({
-            includeDetails: z.boolean().optional().describe("是否包含詳細資訊，預設為 true"),
+            includeDetails: z.boolean().describe("是否包含詳細資訊，傳入 true 或 false"),
           }),
-          execute: async ({ includeDetails = true }) => {
+          execute: async ({ includeDetails }) => {
             console.log("[v0] getStatistics called, includeDetails:", includeDetails)
 
             const { data: batches } = await supabase
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
             const incomeRows = (bankStats || []).filter((t: any) => t.is_income === true)
             const reconciledBank = incomeRows.filter((t: any) => t.reconciliation_status === "reconciled")
 
-            const response = {
+            return {
               bankCsvCount: bankBatches.length,
               platformCsvCount: platformBatches.length,
               platformTransactions: {
@@ -69,13 +69,6 @@ export async function POST(req: Request) {
                 rate: incomeRows.length > 0 ? Math.round((reconciledBank.length / incomeRows.length) * 100) : 0,
               },
             }
-
-            if (includeDetails) {
-              response.bankDetails = bankBatches
-              response.platformDetails = platformBatches
-            }
-
-            return response
           },
         }),
 
@@ -123,7 +116,7 @@ export async function POST(req: Request) {
         getCsvList: tool({
           description: "獲取已匯入的 CSV 檔案清單",
           parameters: z.object({
-            type: z.enum(["all", "bank", "platform"]).describe("篩選類型：all=全部, bank=銀行, platform=平台"),
+            type: z.string().describe("篩選類型：傳入 'all' 代表全部, 'bank' 代表銀行, 'platform' 代表平台"),
           }),
           execute: async ({ type }) => {
             console.log("[v0] getCsvList called with type:", type)
@@ -167,7 +160,7 @@ export async function POST(req: Request) {
           description: "查詢指定年份或月份的收入統計",
           parameters: z.object({
             year: z.number().describe("年份，如 2025"),
-            month: z.number().optional().describe("月份（可選），1-12"),
+            month: z.number().describe("月份，1-12。如果要查全年請傳入 0"),
           }),
           execute: async ({ year, month }) => {
             console.log("[v0] getIncomeStatistics called with year:", year, "month:", month)
@@ -189,7 +182,7 @@ export async function POST(req: Request) {
               const amountStr = tx.raw_data?.["收款"] || "0"
               const amount = Number.parseFloat(amountStr.replace(/[,￥¥]/g, "")) || 0
 
-              if (txYear === year && (!month || txMonth === month)) {
+              if (txYear === year && (month === 0 || txMonth === month)) {
                 totalIncome += amount
                 count++
                 if (tx.reconciliation_status === "reconciled") {
@@ -200,7 +193,7 @@ export async function POST(req: Request) {
 
             return {
               year,
-              month: month || "全年",
+              month: month === 0 ? "全年" : `${month}月`,
               totalIncome: Math.round(totalIncome),
               reconciledIncome: Math.round(reconciledIncome),
               unreconciledIncome: Math.round(totalIncome - reconciledIncome),
@@ -213,8 +206,8 @@ export async function POST(req: Request) {
           description: "產生系統頁面的導航連結",
           parameters: z.object({
             page: z
-              .enum(["dashboard", "platform-transactions", "bank-transactions", "reconciliation", "settings"])
-              .describe("要導航的頁面"),
+              .string()
+              .describe("要導航的頁面：dashboard, platform-transactions, bank-transactions, reconciliation, settings"),
           }),
           execute: async ({ page }) => {
             const pages: Record<string, { url: string; description: string }> = {
